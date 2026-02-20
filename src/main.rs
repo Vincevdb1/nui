@@ -1,39 +1,33 @@
-use color_eyre::eyre::Result;
-use ratatui::{
-    crossterm::event::{self, Event},
-    widgets::{Paragraph, Widget},
-    DefaultTerminal, Frame
-};
+mod tui;
+mod app;
+mod ui;
+pub mod components;
 
-fn main() -> Result<()> {
-    color_eyre::install()?;
+use std::io;
+use crossterm::event::{self, Event, KeyCode};
+use crate::app::App;
 
-    let terminal = ratatui::init();
-    let result = run(terminal);
+fn main() -> io::Result<()> {
+    let mut terminal = tui::init()?;
+    let mut app = App::new();
 
-    ratatui::restore();
+    while !app.should_quit {
+        // Draw the UI
+        terminal.draw(|frame| ui::render(&mut app, frame))?;
 
-    result
-}
-
-fn run(mut terminal: DefaultTerminal) -> Result<()> {
-    loop {
-        // Rendering
-        terminal.draw(render)?;
-
-        // Input Handling
-        if let Event::Key(key) = event::read()? {
-            match key.code {
-                event::KeyCode::Char('q') => break,
-                _ => {}
+        // Handle Events
+        if event::poll(std::time::Duration::from_millis(16))? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Char('q') => app.quit(),
+                    KeyCode::Char('j') => app.increment(),
+                    _ => {}
+                }
             }
         }
+        app.tick();
     }
 
+    tui::restore()?;
     Ok(())
 }
-
-fn render(frame: &mut Frame) {
-    Paragraph::new("Test").render(frame.area(), frame.buffer_mut());
-}
-
