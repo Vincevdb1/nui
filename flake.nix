@@ -18,6 +18,7 @@
         buildInputs = with pkgs; [
           rustc
           cargo
+          cargo-generate
           rust-analyzer
           clippy
           rustfmt
