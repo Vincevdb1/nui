@@ -21,6 +21,8 @@ fn main() -> io::Result<()> {
                 match key.code {
                     KeyCode::Char('q') => app.quit(),
                     KeyCode::Char('j') => app.increment(),
+                    KeyCode::Tab => app.next_tab(),
+                    KeyCode::BackTab => app.previous_tab(),
                     _ => {}
                 }
             }
