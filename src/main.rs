@@ -20,7 +20,6 @@ fn main() -> io::Result<()> {
             if let Event::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char('q') => app.quit(),
-                    KeyCode::Char('j') => app.increment(),
                     KeyCode::Tab => app.next_tab(),
                     KeyCode::BackTab => app.previous_tab(),
                     _ => {}
