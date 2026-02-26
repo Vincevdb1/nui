@@ -7,7 +7,7 @@ pub fn render(frame: &mut Frame, area: Rect, is_selected: bool) {
         .border_style(if is_selected { Style::default().fg(Color::Yellow) } else { Style::default() });
     let p = Paragraph::new(" NUI ")
         .style(Style::default().fg(Color::Cyan))
-        .alignment(Alignment::Center)
+        .alignment(Alignment::Left)
         .block(block);
     frame.render_widget(p, area);
 }
