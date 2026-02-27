@@ -1,5 +1,5 @@
 pub mod scanner;
-pub mod flake;
+pub mod nix_file;
 
-pub use scanner::find_flakes;
-pub use flake::Flake;
+pub use scanner::find_nix_files;
+pub use nix_file::NixFile;

@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
-pub struct Flake {
+pub struct NixFile {
     pub name: String,
     pub path: PathBuf,
 }
 
-impl Flake {
+impl NixFile {
     pub fn new(path: PathBuf) -> Self {
         let name = path.to_string_lossy().to_string();
         

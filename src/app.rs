@@ -1,10 +1,10 @@
-use crate::context::{find_flakes, Flake};
+use crate::context::{find_nix_files, NixFile};
 
 pub struct App {
     pub should_quit: bool,
     pub selected_index: usize,
-    pub flakes: Vec<Flake>,
-    pub selected_flake_index: usize,
+    pub nix_files: Vec<NixFile>,
+    pub selected_nix_file_index: usize,
 }
 
 impl App {
@@ -12,8 +12,8 @@ impl App {
         Self {
             should_quit: false,
             selected_index: 2,
-            flakes: find_flakes(),
-            selected_flake_index: 0,
+            nix_files: find_nix_files(),
+            selected_nix_file_index: 0,
         }
     }
 
