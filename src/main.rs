@@ -3,6 +3,7 @@ mod app;
 mod ui;
 pub mod components;
 mod nix;
+mod context;
 
 use crossterm::event::{self, Event, KeyCode};
 use crate::app::App;

@@ -1,6 +1,10 @@
+use crate::context::{find_flakes, Flake};
+
 pub struct App {
     pub should_quit: bool,
     pub selected_index: usize,
+    pub flakes: Vec<Flake>,
+    pub selected_flake_index: usize,
 }
 
 impl App {
@@ -8,6 +12,8 @@ impl App {
         Self {
             should_quit: false,
             selected_index: 2,
+            flakes: find_flakes(),
+            selected_flake_index: 0,
         }
     }
 
