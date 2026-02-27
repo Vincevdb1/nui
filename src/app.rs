@@ -20,11 +20,23 @@ impl App {
     pub fn tick(&mut self) {}
 
     pub fn next_tab(&mut self) {
-        self.selected_index = if self.selected_index >= 4 { 1 } else { self.selected_index + 1 };
+        self.selected_index = match self.selected_index {
+            1 => 2,
+            2 => 3,
+            3 => 4,
+            4 => 1,
+            _ => 1,
+        };
     }
 
     pub fn previous_tab(&mut self) {
-        self.selected_index = if self.selected_index <= 1 { 4 } else { self.selected_index - 1 };
+        self.selected_index = match self.selected_index {
+            1 => 4,
+            2 => 1,
+            3 => 2,
+            4 => 3,
+            _ => 1,
+        };
     }
 
     pub fn quit(&mut self) {

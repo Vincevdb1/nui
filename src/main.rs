@@ -38,6 +38,12 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
             KeyCode::Char('q') => app.quit(),
             KeyCode::Tab => app.next_tab(),
             KeyCode::BackTab => app.previous_tab(),
+            KeyCode::Char('0') => app.selected_index = 0,
+            KeyCode::Char('1') => app.selected_index = 1,
+            KeyCode::Char('2') => app.selected_index = 2,
+            KeyCode::Char('3') => app.selected_index = 3,
+            KeyCode::Char('4') => app.selected_index = 4,
+            KeyCode::Char('5') => app.selected_index = 5,
             _ => {}
         }
     }
