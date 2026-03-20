@@ -1,94 +1,99 @@
-use rnix::{
-    ast::{self, AttrpathValue, Expr, HasEntry},
-    Root,
-};
 use crate::nix::Input;
+use rnix::{
+    Root,
+    ast::{self, AttrpathValue, Expr, HasEntry},
+};
+use std::collections::HashMap;
 
 pub fn extract_inputs(content: &str) -> Vec<Input> {
     let root = Root::parse(content).tree();
 
-    // Get top-level attr set
     let attr_set = match root.expr() {
         Some(Expr::AttrSet(s)) => s,
         _ => return vec![],
     };
 
-    // Find "inputs" attribute
-    let inputs_attr = attr_set
+    let inputs_set = match attr_set
         .entries()
-        .filter_map(|e| match e {
-            ast::Entry::AttrpathValue(av) => Some(av),
-            _ => None,
-        })
-        .find(|av| is_key(av, "inputs"));
-
-    // Get inner attr set
-    let inner_set = match inputs_attr.and_then(|av| av.value()) {
+        .filter_map(as_attrpath_value)
+        .find(|av| is_key(av, "inputs"))
+        .and_then(|av| av.value())
+    {
         Some(Expr::AttrSet(s)) => s,
         _ => return vec![],
     };
 
-    // Collect inputs
-    let mut inputs: Vec<Input> = Vec::new();
+    let mut inputs: HashMap<String, Input> = HashMap::new();
 
-    for entry in inner_set.entries() {
-        if let ast::Entry::AttrpathValue(av) = entry {
-            let path: Vec<String> = av.attrpath()
-                .map(|p| p.attrs().map(|a| a.to_string().trim().to_string()).collect())
-                .unwrap_or_default();
-            
-            if path.is_empty() { continue; }
-            
-            let name = path[0].clone();
-            let index = if let Some(idx) = inputs.iter().position(|i| i.name == name) {
-                idx
-            } else {
-                inputs.push(Input {
-                    name: name.clone(),
-                    url: String::new(),
-                });
-                inputs.len() - 1
-            };
+    for av in inputs_set.entries().filter_map(as_attrpath_value) {
+        let mut parts = match av.attrpath() {
+            Some(p) => p.attrs().map(|a| a.to_string().trim().to_string()),
+            None => continue,
+        };
 
-            let input = &mut inputs[index];
+        let Some(name) = parts.next() else {
+            continue;
+        };
 
-            if path.len() == 2 && path[1] == "url" {
-                if let Some(value) = av.value() {
-                    if let Expr::Str(s) = value {
-                        input.url = s.to_string().trim_matches('"').to_string();
-                    }
-                }
-            } else if path.len() == 1 {
-                if let Some(value) = av.value() {
-                    match value {
-                        Expr::AttrSet(s) => {
-                            // Look for url inside the set
-                            for inner_entry in s.entries() {
-                                if let ast::Entry::AttrpathValue(inner_av) = inner_entry {
-                                    if is_key(&inner_av, "url") {
-                                        if let Some(Expr::Str(url_str)) = inner_av.value() {
-                                            input.url = url_str.to_string().trim_matches('"').to_string();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Expr::Str(s) => {
-                            // Direct assignment: name = "url"
-                            input.url = s.to_string().trim_matches('"').to_string();
-                        }
-                        _ => {}
-                    }
+        let input = inputs.entry(name.clone()).or_insert_with(|| Input {
+            name,
+            url: String::new(),
+        });
+
+        match (parts.next().as_deref(), parts.next()) {
+            (Some("url"), None) => {
+                if let Some(url) = av.value().and_then(string_value) {
+                    input.url = url;
                 }
             }
+            (None, None) => {
+                if let Some(url) = av.value().and_then(extract_nested_url) {
+                    input.url = url;
+                }
+            }
+            _ => {}
         }
     }
 
-    inputs
+    inputs.into_values().collect()
+}
+
+fn as_attrpath_value(entry: ast::Entry) -> Option<AttrpathValue> {
+    match entry {
+        ast::Entry::AttrpathValue(av) => Some(av),
+        _ => None,
+    }
 }
 
 fn is_key(av: &AttrpathValue, target: &str) -> bool {
     av.attrpath()
         .map(|p| p.to_string().trim() == target)
         .unwrap_or(false)
+}
+
+fn string_value(expr: Expr) -> Option<String> {
+    match expr {
+        Expr::Str(s) => Some(s.to_string().trim_matches('"').to_string()),
+        _ => None,
+    }
+}
+
+fn extract_nested_url(expr: Expr) -> Option<String> {
+    let set = match expr {
+        Expr::AttrSet(s) => s,
+        _ => return None,
+    };
+
+    for entry in set.entries() {
+        if let Some(av) = match entry {
+            ast::Entry::AttrpathValue(av) => Some(av),
+            _ => None,
+        } && is_key(&av, "url")
+            && let Some(url) = av.value().and_then(string_value)
+        {
+            return Some(url);
+        }
+    }
+
+    None
 }
