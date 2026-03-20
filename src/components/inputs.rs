@@ -1,9 +1,14 @@
 use ratatui::{prelude::*, widgets::*};
+use crate::nix::flake::Input;
 
-pub fn render(inputs: &[String], frame: &mut Frame, area: Rect, is_selected: bool) {
+pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect, is_selected: bool) {
     let list_items: Vec<ListItem> = inputs
         .iter()
-        .map(|input| ListItem::new(format!("• {}", input)))
+        .map(|input| {
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("• {}", input.name), Style::default().add_modifier(Modifier::BOLD)),
+            ]))
+        })
         .collect();
 
     let block = Block::default()

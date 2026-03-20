@@ -1,12 +1,12 @@
 use crate::context::{find_nix_files, NixFile};
-use crate::nix::extract_inputs;
+use crate::nix::flake::{extract_inputs, Input};
 
 pub struct App {
     pub should_quit: bool,
     pub selected_index: usize,
     pub nix_files: Vec<NixFile>,
     pub selected_nix_file_index: usize,
-    pub inputs: Vec<String>,
+    pub inputs: Vec<Input>,
 }
 
 impl App {
