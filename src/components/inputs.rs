@@ -1,17 +1,8 @@
 use ratatui::{prelude::*, widgets::*};
-use crate::nix::extract_inputs;
 
-pub fn render(frame: &mut Frame, area: Rect, is_selected: bool) {
-    let file = "flake.nix";
-
-    let content = match std::fs::read_to_string(file) {
-        Ok(content) => content,
-        Err(_) => String::new(),
-    };
-
-    let inputs = extract_inputs(&content);
+pub fn render(inputs: &[String], frame: &mut Frame, area: Rect, is_selected: bool) {
     let list_items: Vec<ListItem> = inputs
-        .into_iter()
+        .iter()
         .map(|input| ListItem::new(format!("• {}", input)))
         .collect();
 

@@ -47,7 +47,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     // Column 1 Components
     title::render(frame, col1_chunks[0], app.selected_index == 1);
     context::render(app, frame, col1_chunks[1], app.selected_index == 2);
-    inputs::render(frame, col1_chunks[2], app.selected_index == 3);
+    inputs::render(&app.inputs, frame, col1_chunks[2], app.selected_index == 3);
     configurations::render(frame, col1_chunks[3], app.selected_index == 4);
 
     // Column 2 Components

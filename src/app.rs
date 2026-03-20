@@ -1,19 +1,25 @@
 use crate::context::{find_nix_files, NixFile};
+use crate::nix::extract_inputs;
 
 pub struct App {
     pub should_quit: bool,
     pub selected_index: usize,
     pub nix_files: Vec<NixFile>,
     pub selected_nix_file_index: usize,
+    pub inputs: Vec<String>,
 }
 
 impl App {
     pub fn new() -> Self {
+        let flake_content = std::fs::read_to_string("flake.nix").unwrap_or_default();
+        let inputs = extract_inputs(&flake_content);
+
         Self {
             should_quit: false,
             selected_index: 2,
             nix_files: find_nix_files(),
             selected_nix_file_index: 0,
+            inputs,
         }
     }
 
