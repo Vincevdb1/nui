@@ -1,5 +1,5 @@
 use crate::context::{find_nix_files, NixFile};
-use crate::nix::flake::{extract_inputs, Input};
+use crate::nix::{Input, flake::extract_inputs};
 
 pub struct App {
     pub should_quit: bool,

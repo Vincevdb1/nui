@@ -2,12 +2,7 @@ use rnix::{
     ast::{self, AttrpathValue, Expr, HasEntry},
     Root,
 };
-
-#[derive(Debug, Clone, Default)]
-pub struct Input {
-    pub name: String,
-    pub url: String,
-}
+use crate::nix::Input;
 
 pub fn extract_inputs(content: &str) -> Vec<Input> {
     let root = Root::parse(content).tree();

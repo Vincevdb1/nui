@@ -1,5 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
-use crate::nix::flake::Input;
+use crate::nix::Input;
 
 pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect, is_selected: bool) {
     let list_items: Vec<ListItem> = inputs
