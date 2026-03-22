@@ -1,7 +1,7 @@
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(frame: &mut Frame, area: Rect) {
-    let p = Paragraph::new("This is the CONTENT for the NUI Title [1]")
-        .alignment(Alignment::Center);
+    let p =
+        Paragraph::new("This is the CONTENT for the NUI Title [1]").alignment(Alignment::Center);
     frame.render_widget(p, area);
 }

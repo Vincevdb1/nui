@@ -12,7 +12,6 @@ pub fn render(frame: &mut Frame, area: Rect) {
     };
     let parse = rnix::Root::parse(&content);
 
-    let p = Paragraph::new(format!("{:#?}", parse.tree()))
-        .alignment(Alignment::Center);
+    let p = Paragraph::new(format!("{:#?}", parse.tree())).alignment(Alignment::Center);
     frame.render_widget(p, area);
 }

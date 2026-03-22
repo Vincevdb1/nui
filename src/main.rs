@@ -1,13 +1,13 @@
-mod tui;
 mod app;
-mod ui;
 pub mod components;
-mod nix;
 mod context;
+mod nix;
+mod tui;
+mod ui;
 
-use crossterm::event::{self, Event, KeyCode};
 use crate::app::App;
 use color_eyre::Result;
+use crossterm::event::{self, Event, KeyCode};
 
 fn main() -> Result<()> {
     color_eyre::install()?;

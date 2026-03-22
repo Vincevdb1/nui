@@ -1,9 +1,9 @@
 use ratatui::{prelude::*, widgets::*};
 
-pub mod title;
+pub mod configurations;
 pub mod context;
 pub mod inputs;
-pub mod configurations;
+pub mod title;
 
 pub fn render(frame: &mut Frame, area: Rect, selected_index: usize) {
     let is_selected = selected_index == 0;
@@ -11,12 +11,14 @@ pub fn render(frame: &mut Frame, area: Rect, selected_index: usize) {
         .title(" [0] Content ")
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(if is_selected { 
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD) 
-        } else { 
-            Style::default() 
+        .border_style(if is_selected {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
         });
-    
+
     let inner_area = block.inner(area);
     frame.render_widget(block, area);
 

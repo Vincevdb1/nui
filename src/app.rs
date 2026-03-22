@@ -1,4 +1,4 @@
-use crate::context::{find_nix_files, NixFile};
+use crate::context::{NixFile, find_nix_files};
 use crate::nix::{Input, flake::extract_inputs};
 
 pub struct App {

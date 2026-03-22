@@ -1,27 +1,21 @@
-use ratatui::{
-    layout::{Constraint, Direction, Layout},
-    widgets::{Block, Borders, Paragraph},
-    Frame,
-};
 use crate::app::App;
 use crate::components::*;
+use ratatui::{
+    Frame,
+    layout::{Constraint, Direction, Layout},
+    widgets::{Block, Borders, Paragraph},
+};
 
 pub fn render(app: &mut App, frame: &mut Frame) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(1),
-        ])
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(frame.area());
 
     // Create the 2nd row layout (2 columns)
     let body_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(33),
-            Constraint::Min(0),
-        ])
+        .constraints([Constraint::Percentage(33), Constraint::Min(0)])
         .split(chunks[0]);
 
     // Column 1: 4 rows (Title + 3 even rows)
@@ -38,10 +32,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     // Column 2: 2 rows (1st row 67%, 2nd row 33%)
     let col2_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage(80),
-            Constraint::Percentage(20),
-        ])
+        .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
         .split(body_chunks[1]);
 
     // Column 1 Components

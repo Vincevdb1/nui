@@ -1,5 +1,5 @@
-pub mod scanner;
 pub mod nix_file;
+pub mod scanner;
 
-pub use scanner::find_nix_files;
 pub use nix_file::NixFile;
+pub use scanner::find_nix_files;

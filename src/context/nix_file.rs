@@ -9,7 +9,7 @@ pub struct NixFile {
 impl NixFile {
     pub fn new(path: PathBuf) -> Self {
         let name = path.to_string_lossy().to_string();
-        
+
         Self { name, path }
     }
 }

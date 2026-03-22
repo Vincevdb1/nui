@@ -1,5 +1,5 @@
-use walkdir::WalkDir;
 use crate::context::NixFile;
+use walkdir::WalkDir;
 
 pub fn find_nix_files() -> Vec<NixFile> {
     let mut nix_files = Vec::new();
