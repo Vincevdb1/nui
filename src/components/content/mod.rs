@@ -1,11 +1,12 @@
 use ratatui::{prelude::*, widgets::*};
+use crate::nix::Input;
 
 pub mod configurations;
 pub mod context;
 pub mod inputs;
 pub mod title;
 
-pub fn render(frame: &mut Frame, area: Rect, selected_index: usize) {
+pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect, selected_index: usize) {
     let is_selected = selected_index == 0;
     let block = Block::default()
         .title(" [0] Content ")
@@ -25,7 +26,7 @@ pub fn render(frame: &mut Frame, area: Rect, selected_index: usize) {
     match selected_index {
         1 => title::render(frame, inner_area),
         2 => context::render(frame, inner_area),
-        3 => inputs::render(frame, inner_area),
+        3 => inputs::render(inputs, frame, inner_area),
         4 => configurations::render(frame, inner_area),
         _ => {
             let p = Paragraph::new("Select a box in the first column to view content.")

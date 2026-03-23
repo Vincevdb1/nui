@@ -42,7 +42,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     configurations::render(frame, col1_chunks[3], app.selected_index == 4);
 
     // Column 2 Components
-    content::render(frame, col2_chunks[0], app.selected_index);
+    content::render(&app.inputs, frame, col2_chunks[0], app.selected_index);
     command_log::render(frame, col2_chunks[1], app.selected_index == 5);
 
     let footer = Paragraph::new("Press 'Tab' to switch focus, 'q' to quit")
