@@ -762,6 +762,7 @@ dependencies = [
  "crossterm",
  "ratatui",
  "rnix",
+ "rowan",
  "walkdir",
 ]
 

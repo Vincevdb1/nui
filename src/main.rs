@@ -34,6 +34,41 @@ fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<()> {
 
 fn handle_events(app: &mut App, event: Event) -> Result<()> {
     if let Event::Key(key) = event {
+        if app.is_adding_input {
+            match key.code {
+                KeyCode::Esc => {
+                    app.is_adding_input = false;
+                    app.new_input_name.clear();
+                    app.new_input_url.clear();
+                    app.input_cursor = 0;
+                }
+                KeyCode::Tab | KeyCode::Down | KeyCode::Up => {
+                    app.input_cursor = 1 - app.input_cursor;
+                }
+                KeyCode::Char(c) => {
+                    if app.input_cursor == 0 {
+                        app.new_input_name.push(c);
+                    } else {
+                        app.new_input_url.push(c);
+                    }
+                }
+                KeyCode::Backspace => {
+                    if app.input_cursor == 0 {
+                        app.new_input_name.pop();
+                    } else {
+                        app.new_input_url.pop();
+                    }
+                }
+                KeyCode::Enter => {
+                    if !app.new_input_name.is_empty() && !app.new_input_url.is_empty() {
+                        app.add_input();
+                    }
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+
         match key.code {
             KeyCode::Char('q') => app.quit(),
             KeyCode::Tab => app.next_tab(),
@@ -44,6 +79,12 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
             KeyCode::Char('3') => app.selected_index = 3,
             KeyCode::Char('4') => app.selected_index = 4,
             KeyCode::Char('5') => app.selected_index = 5,
+            KeyCode::Char('a') if app.selected_index == 3 => {
+                app.is_adding_input = true;
+                app.new_input_name.clear();
+                app.new_input_url.clear();
+                app.input_cursor = 0;
+            }
             _ => {}
         }
     }

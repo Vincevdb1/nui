@@ -48,4 +48,13 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     let footer = Paragraph::new("Press 'Tab' to switch focus, 'q' to quit")
         .block(Block::default().borders(Borders::NONE));
     frame.render_widget(footer, chunks[1]);
+
+    if app.is_adding_input {
+        inputs_popup::render(
+            frame,
+            &app.new_input_name,
+            &app.new_input_url,
+            app.input_cursor,
+        );
+    }
 }
