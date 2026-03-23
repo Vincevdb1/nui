@@ -16,11 +16,13 @@ pub struct Suggestions {
 }
 
 impl Suggestions {
-    pub fn update_filtered(&mut self, query: &str) {
+    pub fn update_filtered(&mut self, query: &str, existing_urls: &[String]) {
         let query_lower = query.to_lowercase();
         self.filtered = self.all
             .iter()
-            .filter(|(name, _)| name.to_lowercase().contains(&query_lower))
+            .filter(|(name, url)| {
+                name.to_lowercase().contains(&query_lower) && !existing_urls.contains(url)
+            })
             .cloned()
             .collect();
         

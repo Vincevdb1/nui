@@ -47,9 +47,14 @@ impl App {
     pub fn process_suggestions(&mut self) {
         if let Ok(branches) = self.rx.try_recv() {
             self.suggestions.all = branches;
-            self.suggestions.update_filtered(&self.new_input_name);
+            self.update_suggestions();
             self.suggestions.is_loading = false;
         }
+    }
+
+    pub fn update_suggestions(&mut self) {
+        let existing_urls: Vec<String> = self.inputs.iter().map(|i| i.url.clone()).collect();
+        self.suggestions.update_filtered(&self.new_input_name, &existing_urls);
     }
 
     pub fn start_fetching(&mut self) {

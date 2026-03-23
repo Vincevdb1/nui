@@ -75,7 +75,7 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                 KeyCode::Char(c) => {
                     if app.input_cursor == 1 {
                         app.new_input_name.push(c);
-                        app.suggestions.update_filtered(&app.new_input_name);
+                        app.update_suggestions();
                     } else if app.input_cursor == 2 {
                         app.new_input_url.push(c);
                     }
@@ -83,7 +83,7 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                 KeyCode::Backspace => {
                     if app.input_cursor == 1 {
                         app.new_input_name.pop();
-                        app.suggestions.update_filtered(&app.new_input_name);
+                        app.update_suggestions();
                     } else if app.input_cursor == 2 {
                         app.new_input_url.pop();
                     }
@@ -120,6 +120,7 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                 app.new_input_name.clear();
                 app.new_input_url.clear();
                 app.input_cursor = 0;
+                app.update_suggestions();
                 app.start_fetching();
             }
             KeyCode::Down | KeyCode::Char('j') => {
