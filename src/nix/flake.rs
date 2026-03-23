@@ -158,6 +158,75 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
 }
 
 pub fn add_input(content: &str, name: &str, url: &str) -> String {
+    let name = name.replace('.', "-");
+    let ast = Root::parse(content);
+    use rnix::SyntaxKind;
+
+    // Try to find the inputs = { ... } block
+    for node in ast.syntax().descendants() {
+        if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+            let has_inputs_path = node.children()
+                .any(|c| c.kind() == SyntaxKind::NODE_ATTRPATH && c.text().to_string().trim() == "inputs");
+
+            if has_inputs_path {
+                if let Some(set_node) = node.children().find(|c| c.kind() == SyntaxKind::NODE_ATTR_SET) {
+                    let mut close_brace_opt = None;
+                    for child in set_node.children_with_tokens() {
+                         if let Some(token) = child.as_token() {
+                             if token.text() == "}" {
+                                 close_brace_opt = Some(token.clone());
+                             }
+                         }
+                    }
+
+                    if let Some(close_brace) = close_brace_opt {
+                        let mut item_indent = "    ".to_string();
+                        // Try to detect indentation from existing items
+                        for child in set_node.children() {
+                            if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                                if let Some(prev) = child.prev_sibling_or_token() {
+                                    if prev.kind() == SyntaxKind::TOKEN_WHITESPACE {
+                                        let ws = prev.to_string();
+                                        if let Some(last_line) = ws.lines().last() {
+                                            item_indent = last_line.to_string();
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                        }
+
+                        // Find the whitespace right before the closing brace to determine its indent
+                        let mut ws_before_brace = String::new();
+                        let mut start_of_replacement = close_brace.text_range().start();
+                        if let Some(prev) = close_brace.prev_sibling_or_token() {
+                            if prev.kind() == SyntaxKind::TOKEN_WHITESPACE {
+                                ws_before_brace = prev.to_string();
+                                start_of_replacement = prev.text_range().start();
+                            }
+                        }
+
+                        let closing_brace_indent = if let Some(last_line) = ws_before_brace.lines().last() {
+                            last_line.to_string()
+                        } else {
+                            "".to_string()
+                        };
+
+                        // Construct the new entry with a leading newline and proper indentation
+                        let new_entry = format!("\n{}{}.url = \"{}\";\n{}}}", item_indent, name, url, closing_brace_indent);
+                        
+                        let mut result = content.to_string();
+                        let start: usize = start_of_replacement.into();
+                        let end: usize = close_brace.text_range().end().into();
+                        result.replace_range(start..end, &new_entry);
+                        return result;
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback to nix-editor if manual insertion fails
     let query = format!("inputs.{}.url", name);
     let value = format!("\"{}\"", url);
     match nix_editor::write::write(content, &query, &value) {

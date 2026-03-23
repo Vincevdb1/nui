@@ -97,15 +97,20 @@ impl App {
     }
 
     pub fn add_input(&mut self) {
-        let content = std::fs::read_to_string("flake.nix").unwrap_or_default();
+        let path = if let Some(file) = self.nix_files.get(self.selected_nix_file_index) {
+            file.path.clone()
+        } else {
+            std::path::PathBuf::from("flake.nix")
+        };
+
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
         let new_content = crate::nix::flake::add_input(&content, &self.new_input_name, &self.new_input_url);
-        if let Err(e) = std::fs::write("flake.nix", new_content) {
-            // In a real app we would log this to command_log
-            eprintln!("Failed to write flake.nix: {}", e);
+        if let Err(e) = std::fs::write(&path, new_content) {
+            eprintln!("Failed to write {:?}: {}", path, e);
         }
-        let updated_content = std::fs::read_to_string("flake.nix").unwrap_or_default();
-        self.inputs = extract_inputs(&updated_content);
-        self.configurations = extract_configurations(&updated_content);
+        
+        self.update_context();
+        
         self.is_adding_input = false;
         self.new_input_name.clear();
         self.new_input_url.clear();
