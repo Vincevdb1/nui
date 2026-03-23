@@ -39,10 +39,10 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     title::render(frame, col1_chunks[0], app.selected_index == 1);
     context::render(app, frame, col1_chunks[1], app.selected_index == 2);
     inputs::render(&app.inputs, frame, col1_chunks[2], app.selected_index == 3);
-    configurations::render(frame, col1_chunks[3], app.selected_index == 4);
+    configurations::render(&app.configurations, frame, col1_chunks[3], app.selected_index == 4);
 
     // Column 2 Components
-    content::render(&app.inputs, frame, col2_chunks[0], app.selected_index);
+    content::render(&app.inputs, &app.configurations, frame, col2_chunks[0], app.selected_index);
     command_log::render(frame, col2_chunks[1], app.selected_index == 5);
 
     let footer = Paragraph::new("Press 'Tab' to switch focus, 'q' to quit")

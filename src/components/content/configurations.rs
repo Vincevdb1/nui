@@ -1,7 +1,8 @@
 use ratatui::{prelude::*, widgets::*};
+use crate::nix::Configuration;
 
-pub fn render(frame: &mut Frame, area: Rect) {
-    let p = Paragraph::new("This is the CONTENT for the Configurations [4]")
+pub fn render(_configurations: &[Configuration], frame: &mut Frame, area: Rect) {
+    let p = Paragraph::new("Select a configuration from the sidebar to view details.")
         .alignment(Alignment::Center);
     frame.render_widget(p, area);
 }

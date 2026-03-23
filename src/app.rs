@@ -1,5 +1,5 @@
 use crate::context::{NixFile, find_nix_files};
-use crate::nix::{Input, flake::extract_inputs, suggestions::Suggestions};
+use crate::nix::{Input, Configuration, flake::{extract_inputs, extract_configurations}, suggestions::Suggestions};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 pub struct App {
@@ -8,6 +8,7 @@ pub struct App {
     pub nix_files: Vec<NixFile>,
     pub selected_nix_file_index: usize,
     pub inputs: Vec<Input>,
+    pub configurations: Vec<Configuration>,
     pub is_adding_input: bool,
     pub new_input_name: String,
     pub new_input_url: String,
@@ -21,6 +22,7 @@ impl App {
     pub fn new() -> Self {
         let flake_content = std::fs::read_to_string("flake.nix").unwrap_or_default();
         let inputs = extract_inputs(&flake_content);
+        let configurations = extract_configurations(&flake_content);
         let (tx, rx) = mpsc::channel();
 
         Self {
@@ -29,6 +31,7 @@ impl App {
             nix_files: find_nix_files(),
             selected_nix_file_index: 0,
             inputs,
+            configurations,
             is_adding_input: false,
             new_input_name: String::new(),
             new_input_url: String::new(),
@@ -87,7 +90,9 @@ impl App {
             // In a real app we would log this to command_log
             eprintln!("Failed to write flake.nix: {}", e);
         }
-        self.inputs = extract_inputs(&std::fs::read_to_string("flake.nix").unwrap_or_default());
+        let updated_content = std::fs::read_to_string("flake.nix").unwrap_or_default();
+        self.inputs = extract_inputs(&updated_content);
+        self.configurations = extract_configurations(&updated_content);
         self.is_adding_input = false;
         self.new_input_name.clear();
         self.new_input_url.clear();
