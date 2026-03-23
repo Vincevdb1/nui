@@ -1,5 +1,5 @@
 use crate::context::{NixFile, find_nix_files};
-use crate::nix::{Input, flake::extract_inputs};
+use crate::nix::{Input, flake::extract_inputs, suggestions::Suggestions};
 
 pub struct App {
     pub should_quit: bool,
@@ -10,7 +10,8 @@ pub struct App {
     pub is_adding_input: bool,
     pub new_input_name: String,
     pub new_input_url: String,
-    pub input_cursor: usize, // 0 for name, 1 for url
+    pub input_cursor: usize, // 0 for common inputs, 1 for name, 2 for url
+    pub suggestions: Suggestions,
 }
 
 impl App {
@@ -28,6 +29,7 @@ impl App {
             new_input_name: String::new(),
             new_input_url: String::new(),
             input_cursor: 0,
+            suggestions: Suggestions::default(),
         }
     }
 

@@ -50,11 +50,12 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     frame.render_widget(footer, chunks[1]);
 
     if app.is_adding_input {
-        inputs_popup::render(
+        popups::add_input::render(
             frame,
             &app.new_input_name,
             &app.new_input_url,
             app.input_cursor,
+            &mut app.suggestions,
         );
     }
 }

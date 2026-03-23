@@ -3,5 +3,5 @@ pub mod configurations;
 pub mod content;
 pub mod context;
 pub mod inputs;
+pub mod popups;
 pub mod title;
-pub mod inputs_popup;

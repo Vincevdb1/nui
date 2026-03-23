@@ -42,25 +42,61 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                     app.new_input_url.clear();
                     app.input_cursor = 0;
                 }
-                KeyCode::Tab | KeyCode::Down | KeyCode::Up => {
-                    app.input_cursor = 1 - app.input_cursor;
+                KeyCode::Tab => {
+                    app.input_cursor = (app.input_cursor + 1) % 3;
+                }
+                KeyCode::BackTab => {
+                    app.input_cursor = if app.input_cursor == 0 { 2 } else { app.input_cursor - 1 };
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if app.input_cursor == 0 {
+                        if !app.suggestions.filtered.is_empty() {
+                            app.suggestions.selected_index = (app.suggestions.selected_index + 1) % app.suggestions.filtered.len();
+                            app.suggestions.list_state.select(Some(app.suggestions.selected_index));
+                        }
+                    } else {
+                        app.input_cursor = (app.input_cursor + 1) % 3;
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if app.input_cursor == 0 {
+                        if !app.suggestions.filtered.is_empty() {
+                            app.suggestions.selected_index = if app.suggestions.selected_index == 0 {
+                                app.suggestions.filtered.len() - 1
+                            } else {
+                                app.suggestions.selected_index - 1
+                            };
+                            app.suggestions.list_state.select(Some(app.suggestions.selected_index));
+                        }
+                    } else {
+                        app.input_cursor = if app.input_cursor == 0 { 2 } else { app.input_cursor - 1 };
+                    }
                 }
                 KeyCode::Char(c) => {
-                    if app.input_cursor == 0 {
+                    if app.input_cursor == 1 {
                         app.new_input_name.push(c);
-                    } else {
+                        app.suggestions.update_filtered(&app.new_input_name);
+                    } else if app.input_cursor == 2 {
                         app.new_input_url.push(c);
                     }
                 }
                 KeyCode::Backspace => {
-                    if app.input_cursor == 0 {
+                    if app.input_cursor == 1 {
                         app.new_input_name.pop();
-                    } else {
+                        app.suggestions.update_filtered(&app.new_input_name);
+                    } else if app.input_cursor == 2 {
                         app.new_input_url.pop();
                     }
                 }
                 KeyCode::Enter => {
-                    if !app.new_input_name.is_empty() && !app.new_input_url.is_empty() {
+                    if app.input_cursor == 0 {
+                        if !app.suggestions.filtered.is_empty() {
+                            let (name, url) = &app.suggestions.filtered[app.suggestions.selected_index];
+                            app.new_input_name = name.clone();
+                            app.new_input_url = url.clone();
+                            app.add_input();
+                        }
+                    } else if !app.new_input_name.is_empty() && !app.new_input_url.is_empty() {
                         app.add_input();
                     }
                 }
@@ -84,6 +120,7 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                 app.new_input_name.clear();
                 app.new_input_url.clear();
                 app.input_cursor = 0;
+                app.suggestions.fetch_branches();
             }
             _ => {}
         }
