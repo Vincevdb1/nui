@@ -1,13 +1,19 @@
 use ratatui::{prelude::*, widgets::*};
 use crate::nix::Configuration;
 
-pub fn render(configurations: &[Configuration], frame: &mut Frame, area: Rect, is_selected: bool) {
+pub fn render(configurations: &[Configuration], frame: &mut Frame, area: Rect, is_selected: bool, selected_index: usize) {
     let list_items: Vec<ListItem> = configurations
         .iter()
-        .map(|config| {
+        .enumerate()
+        .map(|(i, config)| {
+            let style = if i == selected_index {
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
             ListItem::new(Line::from(vec![Span::styled(
                 format!("• {}", config.path),
-                Style::default().add_modifier(Modifier::BOLD),
+                style,
             )]))
         })
         .collect();

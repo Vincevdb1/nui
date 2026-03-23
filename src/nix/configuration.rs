@@ -3,4 +3,5 @@ pub struct Configuration {
     pub path: String,
     pub name: Option<String>,
     pub config_type: String,
+    pub content: Option<String>,
 }

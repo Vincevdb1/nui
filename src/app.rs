@@ -7,6 +7,7 @@ pub struct App {
     pub selected_index: usize,
     pub nix_files: Vec<NixFile>,
     pub selected_nix_file_index: usize,
+    pub selected_configuration_index: usize,
     pub inputs: Vec<Input>,
     pub configurations: Vec<Configuration>,
     pub is_adding_input: bool,
@@ -30,6 +31,7 @@ impl App {
             selected_index: 2,
             nix_files: find_nix_files(),
             selected_nix_file_index: 0,
+            selected_configuration_index: 0,
             inputs,
             configurations,
             is_adding_input: false,
@@ -81,6 +83,17 @@ impl App {
 
     pub fn quit(&mut self) {
         self.should_quit = true;
+    }
+
+    pub fn update_context(&mut self) {
+        if let Some(file) = self.nix_files.get(self.selected_nix_file_index) {
+            let content = std::fs::read_to_string(&file.path).unwrap_or_default();
+            self.inputs = extract_inputs(&content);
+            self.configurations = extract_configurations(&content);
+            if self.selected_configuration_index >= self.configurations.len() {
+                self.selected_configuration_index = 0;
+            }
+        }
     }
 
     pub fn add_input(&mut self) {

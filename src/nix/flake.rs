@@ -1,6 +1,78 @@
-use crate::nix::{Input, Configuration};
+use crate::nix::{Input, Configuration, Package};
 use std::collections::HashMap;
 use rnix::Root;
+
+pub fn extract_packages(content: &str) -> Vec<Package> {
+    let mut packages = Vec::new();
+    let common_paths = [
+        "environment.systemPackages",
+        "home.packages",
+        "buildInputs",
+        "nativeBuildInputs",
+        "packages",
+        "extraPackages",
+    ];
+
+    // Try direct read for each common path
+    for path in common_paths {
+        if let Ok(value) = nix_editor::read::readvalue(content, path) {
+            extract_from_list_string(&value, &mut packages);
+        }
+    }
+
+    // If still empty, or to be more thorough, search the AST for any attribute named like our common paths
+    if packages.is_empty() {
+        let ast = Root::parse(content);
+        use rnix::SyntaxKind;
+        for node in ast.syntax().descendants() {
+            if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                let mut is_target = false;
+                if let Some(path_node) = node.children().find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH) {
+                    let path_text = path_node.text().to_string();
+                    if common_paths.iter().any(|p| path_text.contains(p)) {
+                        is_target = true;
+                    }
+                }
+
+                if is_target {
+                    if let Some(val_node) = node.children().find(|c| c.kind() == SyntaxKind::NODE_LIST) {
+                        extract_from_list_string(&val_node.text().to_string(), &mut packages);
+                    }
+                }
+            }
+        }
+    }
+
+    // Deduplicate
+    let mut seen = std::collections::HashSet::new();
+    packages.retain(|p| seen.insert(p.name.clone()));
+    
+    packages
+}
+
+fn extract_from_list_string(value: &str, packages: &mut Vec<Package>) {
+    if let Some(start) = value.find('[') {
+        if let Some(end) = value.rfind(']') {
+            let inside = &value[start + 1..end];
+            for item in inside.split_whitespace() {
+                // Basic cleanup of common prefixes/suffixes
+                let name = item
+                    .trim_start_matches("pkgs.")
+                    .trim_start_matches('(')
+                    .trim_end_matches(')')
+                    .trim_matches('"')
+                    .to_string();
+                
+                if !name.is_empty() && !name.starts_with('#') && name.chars().any(|c| c.is_alphanumeric()) {
+                    packages.push(Package {
+                        name,
+                        description: String::new(),
+                    });
+                }
+            }
+        }
+    }
+}
 
 pub fn extract_inputs(content: &str) -> Vec<Input> {
     let mut inputs: HashMap<String, Input> = HashMap::new();
@@ -74,6 +146,7 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
                             path,
                             name: name_opt,
                             config_type: config_type.to_string(),
+                            content: Some(val),
                         });
                     }
                 }

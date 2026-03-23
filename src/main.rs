@@ -122,6 +122,38 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                 app.input_cursor = 0;
                 app.start_fetching();
             }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if app.selected_index == 2 {
+                    if !app.nix_files.is_empty() {
+                        app.selected_nix_file_index = (app.selected_nix_file_index + 1) % app.nix_files.len();
+                        app.update_context();
+                    }
+                } else if app.selected_index == 4 {
+                    if !app.configurations.is_empty() {
+                        app.selected_configuration_index = (app.selected_configuration_index + 1) % app.configurations.len();
+                    }
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if app.selected_index == 2 {
+                    if !app.nix_files.is_empty() {
+                        app.selected_nix_file_index = if app.selected_nix_file_index == 0 {
+                            app.nix_files.len() - 1
+                        } else {
+                            app.selected_nix_file_index - 1
+                        };
+                        app.update_context();
+                    }
+                } else if app.selected_index == 4 {
+                    if !app.configurations.is_empty() {
+                        app.selected_configuration_index = if app.selected_configuration_index == 0 {
+                            app.configurations.len() - 1
+                        } else {
+                            app.selected_configuration_index - 1
+                        };
+                    }
+                }
+            }
             _ => {}
         }
     }
