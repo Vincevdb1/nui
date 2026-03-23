@@ -1,7 +1,7 @@
 use crate::nix::suggestions::Suggestions;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect, Alignment},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Clear, Paragraph, List, ListItem},
 };
@@ -39,25 +39,73 @@ pub fn render(
         Style::default()
     };
 
-    let items: Vec<ListItem> = suggestions.filtered
-        .iter()
-        .map(|(name, _)| {
-            ListItem::new(format!("  {}", name))
-        })
-        .collect();
-
-    let highlight_style = if cursor == 0 {
-        Style::default().bg(Color::Cyan).fg(Color::Black).add_modifier(Modifier::BOLD)
+    let list_title = if suggestions.is_loading {
+        " Suggestions (Loading...) "
     } else {
-        Style::default().bg(Color::DarkGray)
+        " Suggestions (Enter to add) "
     };
 
-    let list = List::new(items)
-        .block(Block::default().title(" Suggestions (Enter to add) ").borders(Borders::ALL).border_style(list_block_style))
-        .highlight_style(highlight_style)
-        .highlight_symbol(">> ");
-    
-    frame.render_stateful_widget(list, chunks[0], &mut suggestions.list_state);
+    if suggestions.is_loading {
+        let block = Block::default()
+            .title(list_title)
+            .borders(Borders::ALL)
+            .border_style(list_block_style);
+        frame.render_widget(block, chunks[0]);
+
+        let area = chunks[0];
+        let vertical_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
+
+        let loading = Paragraph::new("Loading branches from GitHub...")
+            .alignment(Alignment::Center);
+        frame.render_widget(loading, vertical_chunks[1]);
+    } else if suggestions.filtered.is_empty() {
+        let block = Block::default()
+            .title(list_title)
+            .borders(Borders::ALL)
+            .border_style(list_block_style);
+        frame.render_widget(block, chunks[0]);
+
+        let area = chunks[0];
+        let vertical_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
+
+        let empty = Paragraph::new("No suggestions found.")
+            .alignment(Alignment::Center);
+        frame.render_widget(empty, vertical_chunks[1]);
+    } else {
+        let items: Vec<ListItem> = suggestions.filtered
+            .iter()
+            .map(|(name, _)| {
+                ListItem::new(format!("  {}", name))
+            })
+            .collect();
+
+        let highlight_style = if cursor == 0 {
+            Style::default().bg(Color::Cyan).fg(Color::Black).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().bg(Color::DarkGray)
+        };
+
+        let list = List::new(items)
+            .block(Block::default().title(list_title).borders(Borders::ALL).border_style(list_block_style))
+            .highlight_style(highlight_style)
+            .highlight_symbol(">> ");
+        
+        frame.render_stateful_widget(list, chunks[0], &mut suggestions.list_state);
+    }
 
     // 2. Manual Input Block (Bottom)
     let manual_block = Block::default()

@@ -1,5 +1,6 @@
 use crate::context::{NixFile, find_nix_files};
 use crate::nix::{Input, flake::extract_inputs, suggestions::Suggestions};
+use std::sync::mpsc::{self, Receiver, Sender};
 
 pub struct App {
     pub should_quit: bool,
@@ -12,12 +13,15 @@ pub struct App {
     pub new_input_url: String,
     pub input_cursor: usize, // 0 for common inputs, 1 for name, 2 for url
     pub suggestions: Suggestions,
+    pub tx: Sender<Vec<(String, String)>>,
+    pub rx: Receiver<Vec<(String, String)>>,
 }
 
 impl App {
     pub fn new() -> Self {
         let flake_content = std::fs::read_to_string("flake.nix").unwrap_or_default();
         let inputs = extract_inputs(&flake_content);
+        let (tx, rx) = mpsc::channel();
 
         Self {
             should_quit: false,
@@ -30,10 +34,27 @@ impl App {
             new_input_url: String::new(),
             input_cursor: 0,
             suggestions: Suggestions::default(),
+            tx,
+            rx,
         }
     }
 
-    pub fn tick(&mut self) {}
+    pub fn process_suggestions(&mut self) {
+        if let Ok(branches) = self.rx.try_recv() {
+            self.suggestions.all = branches;
+            self.suggestions.update_filtered(&self.new_input_name);
+            self.suggestions.is_loading = false;
+        }
+    }
+
+    pub fn start_fetching(&mut self) {
+        self.suggestions.is_loading = true;
+        Suggestions::fetch_branches(self.tx.clone());
+    }
+
+    pub fn tick(&mut self) {
+        self.process_suggestions();
+    }
 
     pub fn next_tab(&mut self) {
         self.selected_index = match self.selected_index {

@@ -120,7 +120,7 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                 app.new_input_name.clear();
                 app.new_input_url.clear();
                 app.input_cursor = 0;
-                app.suggestions.fetch_branches();
+                app.start_fetching();
             }
             _ => {}
         }

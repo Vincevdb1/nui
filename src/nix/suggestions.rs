@@ -12,6 +12,7 @@ pub struct Suggestions {
     pub filtered: Vec<(String, String)>,
     pub selected_index: usize,
     pub list_state: ListState,
+    pub is_loading: bool,
 }
 
 impl Suggestions {
@@ -33,48 +34,49 @@ impl Suggestions {
         });
     }
 
-    pub fn fetch_branches(&mut self) {
-        // Fetch branches from GitHub API using reqwest (blocking)
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("nui-tui-app")
-            .build();
+    pub fn fetch_branches(tx: std::sync::mpsc::Sender<Vec<(String, String)>>) {
+        std::thread::spawn(move || {
+            // Fetch branches from GitHub API using reqwest (blocking)
+            let client = reqwest::blocking::Client::builder()
+                .user_agent("nui-tui-app")
+                .build();
 
-        if let Ok(client) = client {
-            // Using protected=true usually gives us the release branches we care about
-            let response = client.get("https://api.github.com/repos/nixos/nixpkgs/branches?protected=true&per_page=100")
-                .send();
+            if let Ok(client) = client {
+                // Using protected=true usually gives us the release branches we care about
+                let response = client.get("https://api.github.com/repos/nixos/nixpkgs/branches?protected=true&per_page=100")
+                    .send();
 
-            if let Ok(response) = response {
-                if let Ok(branches_json) = response.json::<Vec<GitHubBranch>>() {
-                    let branches: Vec<(String, String)> = branches_json
-                        .into_iter()
-                        .filter_map(|b| {
-                            let branch = b.name;
-                            // We want nixos-XX.XX branches, master, and nixpkgs-unstable
-                            if branch.starts_with("nixos-") || branch == "nixpkgs-unstable" || branch == "master" {
-                                let url = format!("github:nixos/nixpkgs/{}", branch);
-                                return Some((branch, url));
+                if let Ok(response) = response {
+                    if let Ok(branches_json) = response.json::<Vec<GitHubBranch>>() {
+                        let branches: Vec<(String, String)> = branches_json
+                            .into_iter()
+                            .filter_map(|b| {
+                                let branch = b.name;
+                                // We want nixos-XX.XX branches, master, and nixpkgs-unstable
+                                if branch.starts_with("nixos-") || branch == "nixpkgs-unstable" || branch == "master" {
+                                    let url = format!("github:nixos/nixpkgs/{}", branch);
+                                    return Some((branch, url));
+                                }
+                                None
+                            })
+                            .collect();
+
+                        let mut sorted_branches = branches;
+                        // Sort by name, but keep master and nixpkgs-unstable at the top if possible
+                        sorted_branches.sort_by(|a, b| {
+                            if a.0 == "master" || a.0 == "nixpkgs-unstable" {
+                                std::cmp::Ordering::Less
+                            } else if b.0 == "master" || b.0 == "nixpkgs-unstable" {
+                                std::cmp::Ordering::Greater
+                            } else {
+                                b.0.cmp(&a.0) // Reverse version sort
                             }
-                            None
-                        })
-                        .collect();
-
-                    let mut sorted_branches = branches;
-                    // Sort by name, but keep master and nixpkgs-unstable at the top if possible
-                    sorted_branches.sort_by(|a, b| {
-                        if a.0 == "master" || a.0 == "nixpkgs-unstable" {
-                            std::cmp::Ordering::Less
-                        } else if b.0 == "master" || b.0 == "nixpkgs-unstable" {
-                            std::cmp::Ordering::Greater
-                        } else {
-                            b.0.cmp(&a.0) // Reverse version sort
-                        }
-                    });
-                    
-                    self.all = sorted_branches;
-                    self.update_filtered("");
+                        });
+                        
+                        let _ = tx.send(sorted_branches);
+                    }
                 }
             }
-        }
+        });
     }
 }
