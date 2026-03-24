@@ -1,5 +1,5 @@
-use ratatui::{prelude::*, widgets::*};
 use crate::app::App;
+use ratatui::{prelude::*, widgets::*};
 
 pub mod inputs;
 pub mod packages;
@@ -8,8 +8,16 @@ pub mod title;
 pub fn render(app: &App, frame: &mut Frame, area: Rect, selected_index: usize) {
     let title = match selected_index {
         2 | 4 => {
-            let context_name = app.nix_files.get(app.selected_nix_file_index).map(|f| f.name.as_str()).unwrap_or("None");
-            let config_path = app.configurations.get(app.selected_configuration_index).map(|c| c.path.as_str()).unwrap_or("None");
+            let context_name = app
+                .nix_files
+                .get(app.selected_nix_file_index)
+                .map(|f| f.name.as_str())
+                .unwrap_or("None");
+            let config_path = app
+                .configurations
+                .get(app.selected_configuration_index)
+                .map(|c| c.path.as_str())
+                .unwrap_or("None");
             format!(" [0] Content: {} / {} ", context_name, config_path)
         }
         3 => " [0] Content: Inputs ".to_string(),

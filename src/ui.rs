@@ -39,7 +39,13 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     title::render(frame, col1_chunks[0], app.selected_index == 1);
     context::render(app, frame, col1_chunks[1], app.selected_index == 2);
     inputs::render(&app.inputs, frame, col1_chunks[2], app.selected_index == 3);
-    configurations::render(&app.configurations, frame, col1_chunks[3], app.selected_index == 4, app.selected_configuration_index);
+    configurations::render(
+        &app.configurations,
+        frame,
+        col1_chunks[3],
+        app.selected_index == 4,
+        app.selected_configuration_index,
+    );
 
     // Column 2 Components
     content::render(app, frame, col2_chunks[0], app.selected_index);

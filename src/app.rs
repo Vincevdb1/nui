@@ -1,5 +1,9 @@
 use crate::context::{NixFile, find_nix_files};
-use crate::nix::{Input, Configuration, flake::{extract_inputs, extract_configurations}, suggestions::Suggestions};
+use crate::nix::{
+    Configuration, Input,
+    flake::{extract_configurations, extract_inputs},
+    suggestions::Suggestions,
+};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 pub struct App {
@@ -54,7 +58,8 @@ impl App {
 
     pub fn update_suggestions(&mut self) {
         let existing_urls: Vec<String> = self.inputs.iter().map(|i| i.url.clone()).collect();
-        self.suggestions.update_filtered(&self.new_input_name, &existing_urls);
+        self.suggestions
+            .update_filtered(&self.new_input_name, &existing_urls);
     }
 
     pub fn start_fetching(&mut self) {
@@ -109,13 +114,14 @@ impl App {
         };
 
         let content = std::fs::read_to_string(&path).unwrap_or_default();
-        let new_content = crate::nix::flake::add_input(&content, &self.new_input_name, &self.new_input_url);
+        let new_content =
+            crate::nix::flake::add_input(&content, &self.new_input_name, &self.new_input_url);
         if let Err(e) = std::fs::write(&path, new_content) {
             eprintln!("Failed to write {:?}: {}", path, e);
         }
-        
+
         self.update_context();
-        
+
         self.is_adding_input = false;
         self.new_input_name.clear();
         self.new_input_url.clear();

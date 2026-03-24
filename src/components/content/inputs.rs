@@ -1,15 +1,18 @@
-use ratatui::{prelude::*, widgets::*};
 use crate::nix::Input;
+use ratatui::{prelude::*, widgets::*};
 
 pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect) {
     let mut rows = Vec::new();
-    
+
     // Header separator row
-    rows.push(Row::new(vec![
-        Cell::from("─".repeat(100)),
-        Cell::from("┼"),
-        Cell::from("─".repeat(100)),
-    ]).style(Style::default().fg(Color::DarkGray)));
+    rows.push(
+        Row::new(vec![
+            Cell::from("─".repeat(100)),
+            Cell::from("┼"),
+            Cell::from("─".repeat(100)),
+        ])
+        .style(Style::default().fg(Color::DarkGray)),
+    );
 
     for input in inputs {
         rows.push(Row::new(vec![
@@ -32,7 +35,7 @@ pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect) {
                 Cell::from("│"),
                 Cell::from(" URL"),
             ])
-            .style(Style::default().add_modifier(Modifier::BOLD))
+            .style(Style::default().add_modifier(Modifier::BOLD)),
         )
         .column_spacing(0);
 

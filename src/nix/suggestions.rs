@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use ratatui::widgets::ListState;
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct GitHubBranch {
@@ -18,14 +18,15 @@ pub struct Suggestions {
 impl Suggestions {
     pub fn update_filtered(&mut self, query: &str, existing_urls: &[String]) {
         let query_lower = query.to_lowercase();
-        self.filtered = self.all
+        self.filtered = self
+            .all
             .iter()
             .filter(|(name, url)| {
                 name.to_lowercase().contains(&query_lower) && !existing_urls.contains(url)
             })
             .cloned()
             .collect();
-        
+
         if self.selected_index >= self.filtered.len() {
             self.selected_index = 0;
         }
@@ -55,7 +56,10 @@ impl Suggestions {
                             .filter_map(|b| {
                                 let branch = b.name;
                                 // We want nixos-XX.XX branches, master, and nixpkgs-unstable
-                                if branch.starts_with("nixos-") || branch == "nixpkgs-unstable" || branch == "master" {
+                                if branch.starts_with("nixos-")
+                                    || branch == "nixpkgs-unstable"
+                                    || branch == "master"
+                                {
                                     let url = format!("github:nixos/nixpkgs/{}", branch);
                                     return Some((branch, url));
                                 }
@@ -74,7 +78,7 @@ impl Suggestions {
                                 b.0.cmp(&a.0) // Reverse version sort
                             }
                         });
-                        
+
                         let _ = tx.send(sorted_branches);
                     }
                 }

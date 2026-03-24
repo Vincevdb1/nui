@@ -46,13 +46,20 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                     app.input_cursor = (app.input_cursor + 1) % 3;
                 }
                 KeyCode::BackTab => {
-                    app.input_cursor = if app.input_cursor == 0 { 2 } else { app.input_cursor - 1 };
+                    app.input_cursor = if app.input_cursor == 0 {
+                        2
+                    } else {
+                        app.input_cursor - 1
+                    };
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
                     if app.input_cursor == 0 {
                         if !app.suggestions.filtered.is_empty() {
-                            app.suggestions.selected_index = (app.suggestions.selected_index + 1) % app.suggestions.filtered.len();
-                            app.suggestions.list_state.select(Some(app.suggestions.selected_index));
+                            app.suggestions.selected_index = (app.suggestions.selected_index + 1)
+                                % app.suggestions.filtered.len();
+                            app.suggestions
+                                .list_state
+                                .select(Some(app.suggestions.selected_index));
                         }
                     } else {
                         app.input_cursor = (app.input_cursor + 1) % 3;
@@ -61,15 +68,22 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                 KeyCode::Up | KeyCode::Char('k') => {
                     if app.input_cursor == 0 {
                         if !app.suggestions.filtered.is_empty() {
-                            app.suggestions.selected_index = if app.suggestions.selected_index == 0 {
+                            app.suggestions.selected_index = if app.suggestions.selected_index == 0
+                            {
                                 app.suggestions.filtered.len() - 1
                             } else {
                                 app.suggestions.selected_index - 1
                             };
-                            app.suggestions.list_state.select(Some(app.suggestions.selected_index));
+                            app.suggestions
+                                .list_state
+                                .select(Some(app.suggestions.selected_index));
                         }
                     } else {
-                        app.input_cursor = if app.input_cursor == 0 { 2 } else { app.input_cursor - 1 };
+                        app.input_cursor = if app.input_cursor == 0 {
+                            2
+                        } else {
+                            app.input_cursor - 1
+                        };
                     }
                 }
                 KeyCode::Char(c) => {
@@ -91,7 +105,8 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                 KeyCode::Enter => {
                     if app.input_cursor == 0 {
                         if !app.suggestions.filtered.is_empty() {
-                            let (name, url) = &app.suggestions.filtered[app.suggestions.selected_index];
+                            let (name, url) =
+                                &app.suggestions.filtered[app.suggestions.selected_index];
                             app.new_input_name = name.clone();
                             app.new_input_url = url.clone();
                             app.add_input();
@@ -126,12 +141,14 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
             KeyCode::Down | KeyCode::Char('j') => {
                 if app.selected_index == 2 {
                     if !app.nix_files.is_empty() {
-                        app.selected_nix_file_index = (app.selected_nix_file_index + 1) % app.nix_files.len();
+                        app.selected_nix_file_index =
+                            (app.selected_nix_file_index + 1) % app.nix_files.len();
                         app.update_context();
                     }
                 } else if app.selected_index == 4 {
                     if !app.configurations.is_empty() {
-                        app.selected_configuration_index = (app.selected_configuration_index + 1) % app.configurations.len();
+                        app.selected_configuration_index =
+                            (app.selected_configuration_index + 1) % app.configurations.len();
                     }
                 }
             }
@@ -147,7 +164,8 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                     }
                 } else if app.selected_index == 4 {
                     if !app.configurations.is_empty() {
-                        app.selected_configuration_index = if app.selected_configuration_index == 0 {
+                        app.selected_configuration_index = if app.selected_configuration_index == 0
+                        {
                             app.configurations.len() - 1
                         } else {
                             app.selected_configuration_index - 1

@@ -1,6 +1,6 @@
-use crate::nix::{Input, Configuration, Package};
-use std::collections::HashMap;
+use crate::nix::{Configuration, Input, Package};
 use rnix::Root;
+use std::collections::HashMap;
 
 pub fn extract_packages(content: &str) -> Vec<Package> {
     let mut packages = Vec::new();
@@ -27,7 +27,10 @@ pub fn extract_packages(content: &str) -> Vec<Package> {
         for node in ast.syntax().descendants() {
             if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
                 let mut is_target = false;
-                if let Some(path_node) = node.children().find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH) {
+                if let Some(path_node) = node
+                    .children()
+                    .find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH)
+                {
                     let path_text = path_node.text().to_string();
                     if common_paths.iter().any(|p| path_text.contains(p)) {
                         is_target = true;
@@ -35,7 +38,9 @@ pub fn extract_packages(content: &str) -> Vec<Package> {
                 }
 
                 if is_target {
-                    if let Some(val_node) = node.children().find(|c| c.kind() == SyntaxKind::NODE_LIST) {
+                    if let Some(val_node) =
+                        node.children().find(|c| c.kind() == SyntaxKind::NODE_LIST)
+                    {
                         extract_from_list_string(&val_node.text().to_string(), &mut packages);
                     }
                 }
@@ -46,7 +51,7 @@ pub fn extract_packages(content: &str) -> Vec<Package> {
     // Deduplicate
     let mut seen = std::collections::HashSet::new();
     packages.retain(|p| seen.insert(p.name.clone()));
-    
+
     packages
 }
 
@@ -62,8 +67,11 @@ fn extract_from_list_string(value: &str, packages: &mut Vec<Package>) {
                     .trim_end_matches(')')
                     .trim_matches('"')
                     .to_string();
-                
-                if !name.is_empty() && !name.starts_with('#') && name.chars().any(|c| c.is_alphanumeric()) {
+
+                if !name.is_empty()
+                    && !name.starts_with('#')
+                    && name.chars().any(|c| c.is_alphanumeric())
+                {
                     packages.push(Package {
                         name,
                         description: String::new(),
@@ -82,10 +90,13 @@ pub fn extract_inputs(content: &str) -> Vec<Input> {
             if let Some(rest) = key.strip_prefix("inputs.") {
                 if let Some(name) = rest.strip_suffix(".url") {
                     let url = val.trim_matches('"').to_string();
-                    inputs.insert(name.to_string(), Input {
-                        name: name.to_string(),
-                        url,
-                    });
+                    inputs.insert(
+                        name.to_string(),
+                        Input {
+                            name: name.to_string(),
+                            url,
+                        },
+                    );
                 }
             }
         }
@@ -99,7 +110,7 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
 
     if let Ok(outputs_val) = nix_editor::read::readvalue(content, "outputs") {
         let mut replacements: HashMap<String, String> = HashMap::new();
-        
+
         // Extract let bindings for replacements
         let ast = Root::parse(&outputs_val);
         use rnix::SyntaxKind;
@@ -109,10 +120,16 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
                     if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
                         let mut key = String::new();
                         let mut val = String::new();
-                        if let Some(path) = child.children().find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH) {
+                        if let Some(path) = child
+                            .children()
+                            .find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH)
+                        {
                             key = path.text().to_string().trim().to_string();
                         }
-                        if let Some(v) = child.children().find(|c| c.kind() != SyntaxKind::NODE_ATTRPATH) {
+                        if let Some(v) = child
+                            .children()
+                            .find(|c| c.kind() != SyntaxKind::NODE_ATTRPATH)
+                        {
                             val = v.text().to_string().trim().trim_matches('"').to_string();
                         }
                         if !key.is_empty() && !val.is_empty() {
@@ -128,16 +145,22 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
                 let parts: Vec<&str> = key.split('.').collect();
                 if !parts.is_empty() {
                     let config_type = parts[0];
-                    if matches!(config_type, "nixosConfigurations" | "homeConfigurations" | "devShells" | "darwinConfigurations") {
+                    if matches!(
+                        config_type,
+                        "nixosConfigurations"
+                            | "homeConfigurations"
+                            | "devShells"
+                            | "darwinConfigurations"
+                    ) {
                         let mut path = parts[1..].join(".");
-                        
+
                         // Apply replacements
                         for (k, v) in &replacements {
                             path = path.replace(k, v);
                         }
 
                         let mut name_opt = None;
-                        
+
                         if let Ok(name_val) = nix_editor::read::readvalue(&val, "name") {
                             name_opt = Some(name_val.trim_matches('"').to_string());
                         }
@@ -165,18 +188,22 @@ pub fn add_input(content: &str, name: &str, url: &str) -> String {
     // Try to find the inputs = { ... } block
     for node in ast.syntax().descendants() {
         if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
-            let has_inputs_path = node.children()
-                .any(|c| c.kind() == SyntaxKind::NODE_ATTRPATH && c.text().to_string().trim() == "inputs");
+            let has_inputs_path = node.children().any(|c| {
+                c.kind() == SyntaxKind::NODE_ATTRPATH && c.text().to_string().trim() == "inputs"
+            });
 
             if has_inputs_path {
-                if let Some(set_node) = node.children().find(|c| c.kind() == SyntaxKind::NODE_ATTR_SET) {
+                if let Some(set_node) = node
+                    .children()
+                    .find(|c| c.kind() == SyntaxKind::NODE_ATTR_SET)
+                {
                     let mut close_brace_opt = None;
                     for child in set_node.children_with_tokens() {
-                         if let Some(token) = child.as_token() {
-                             if token.text() == "}" {
-                                 close_brace_opt = Some(token.clone());
-                             }
-                         }
+                        if let Some(token) = child.as_token() {
+                            if token.text() == "}" {
+                                close_brace_opt = Some(token.clone());
+                            }
+                        }
                     }
 
                     if let Some(close_brace) = close_brace_opt {
@@ -206,15 +233,19 @@ pub fn add_input(content: &str, name: &str, url: &str) -> String {
                             }
                         }
 
-                        let closing_brace_indent = if let Some(last_line) = ws_before_brace.lines().last() {
-                            last_line.to_string()
-                        } else {
-                            "".to_string()
-                        };
+                        let closing_brace_indent =
+                            if let Some(last_line) = ws_before_brace.lines().last() {
+                                last_line.to_string()
+                            } else {
+                                "".to_string()
+                            };
 
                         // Construct the new entry with a leading newline and proper indentation
-                        let new_entry = format!("\n{}{}.url = \"{}\";\n{}}}", item_indent, name, url, closing_brace_indent);
-                        
+                        let new_entry = format!(
+                            "\n{}{}.url = \"{}\";\n{}}}",
+                            item_indent, name, url, closing_brace_indent
+                        );
+
                         let mut result = content.to_string();
                         let start: usize = start_of_replacement.into();
                         let end: usize = close_brace.text_range().end().into();
