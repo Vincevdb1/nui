@@ -71,6 +71,7 @@ fn extract_from_list_string(value: &str, packages: &mut Vec<Package>) {
                     packages.push(Package {
                         name,
                         description: String::new(),
+                        version: None,
                     });
                 }
             }

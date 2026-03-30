@@ -1,9 +1,10 @@
 use crate::context::{NixFile, find_nix_files};
 use crate::nix::{
-    Configuration, Input,
+    Configuration, Input, Package,
     flake::{extract_configurations, extract_inputs},
     suggestions::Suggestions,
 };
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 pub struct App {
@@ -14,6 +15,10 @@ pub struct App {
     pub selected_configuration_index: usize,
     pub inputs: Vec<Input>,
     pub configurations: Vec<Configuration>,
+    pub package_info: HashMap<String, (String, String)>,
+    pub pending_fetches: HashSet<String>,
+    pub fetching_package_details: bool,
+    pub package_fetch_error: Option<String>,
     pub is_adding_input: bool,
     pub new_input_name: String,
     pub new_input_url: String,
@@ -21,6 +26,8 @@ pub struct App {
     pub suggestions: Suggestions,
     pub tx: Sender<Vec<(String, String)>>,
     pub rx: Receiver<Vec<(String, String)>>,
+    pub pkg_tx: Sender<Result<HashMap<String, (String, String)>, String>>,
+    pub pkg_rx: Receiver<Result<HashMap<String, (String, String)>, String>>,
 }
 
 impl App {
@@ -29,8 +36,9 @@ impl App {
         let inputs = extract_inputs(&flake_content);
         let configurations = extract_configurations(&flake_content);
         let (tx, rx) = mpsc::channel();
+        let (pkg_tx, pkg_rx) = mpsc::channel();
 
-        Self {
+        let mut app = Self {
             should_quit: false,
             selected_index: 2,
             nix_files: find_nix_files(),
@@ -38,6 +46,10 @@ impl App {
             selected_configuration_index: 0,
             inputs,
             configurations,
+            package_info: HashMap::new(),
+            pending_fetches: HashSet::new(),
+            fetching_package_details: false,
+            package_fetch_error: None,
             is_adding_input: false,
             new_input_name: String::new(),
             new_input_url: String::new(),
@@ -45,7 +57,11 @@ impl App {
             suggestions: Suggestions::default(),
             tx,
             rx,
-        }
+            pkg_tx,
+            pkg_rx,
+        };
+        app.fetch_package_details_from_config();
+        app
     }
 
     pub fn process_suggestions(&mut self) {
@@ -53,6 +69,40 @@ impl App {
             self.suggestions.all = branches;
             self.update_suggestions();
             self.suggestions.is_loading = false;
+        }
+        if let Ok(res) = self.pkg_rx.try_recv() {
+            self.fetching_package_details = false;
+            self.pending_fetches.clear();
+            match res {
+                Ok(results) => {
+                    self.package_fetch_error = None;
+                    for (name, details) in results {
+                        self.package_info.insert(name, details);
+                    }
+                }
+                Err(e) => {
+                    self.package_fetch_error = Some(e);
+                }
+            }
+        }
+    }
+
+    pub fn fetch_package_details_from_config(&mut self) {
+        if let Some(config) = self.configurations.get(self.selected_configuration_index) {
+            let config_type = config.config_type.clone();
+            let config_name = config.path.clone();
+
+            self.fetching_package_details = true;
+            self.package_fetch_error = None;
+            self.pending_fetches.clear();
+            // We don't know the exact package names yet without evaluating,
+            // but we can mark the app as "fetching" in some way if we wanted.
+            
+            let tx = self.pkg_tx.clone();
+            std::thread::spawn(move || {
+                let res = Package::fetch_from_config(&config_type, &config_name);
+                let _ = tx.send(res);
+            });
         }
     }
 
@@ -79,6 +129,7 @@ impl App {
             4 => 1,
             _ => 1,
         };
+        self.fetch_package_details_from_config();
     }
 
     pub fn previous_tab(&mut self) {
@@ -89,6 +140,7 @@ impl App {
             4 => 3,
             _ => 1,
         };
+        self.fetch_package_details_from_config();
     }
 
     pub fn quit(&mut self) {
@@ -103,6 +155,7 @@ impl App {
             if self.selected_configuration_index >= self.configurations.len() {
                 self.selected_configuration_index = 0;
             }
+            self.fetch_package_details_from_config();
         }
     }
 

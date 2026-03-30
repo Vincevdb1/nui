@@ -149,6 +149,7 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                     if !app.configurations.is_empty() {
                         app.selected_configuration_index =
                             (app.selected_configuration_index + 1) % app.configurations.len();
+                        app.fetch_package_details_from_config();
                     }
                 }
             }
@@ -170,6 +171,7 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                         } else {
                             app.selected_configuration_index - 1
                         };
+                        app.fetch_package_details_from_config();
                     }
                 }
             }

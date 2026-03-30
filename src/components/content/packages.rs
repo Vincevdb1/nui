@@ -27,24 +27,63 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         return;
     }
 
+    let main_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(if app.package_fetch_error.is_some() {
+                3
+            } else {
+                1
+            }), // Indicator/Error
+            Constraint::Min(0), // Table
+        ])
+        .split(area);
+
+    if let Some(err) = &app.package_fetch_error {
+        let p = Paragraph::new(format!("Flake evaluation failed: {}", err))
+            .style(Style::default().fg(Color::Red))
+            .wrap(Wrap { trim: true })
+            .alignment(Alignment::Left);
+        frame.render_widget(p, main_layout[0]);
+    } else if app.fetching_package_details {
+        let p = Paragraph::new("Fetching package details from flake evaluation...")
+            .style(Style::default().fg(Color::Yellow))
+            .alignment(Alignment::Left);
+        frame.render_widget(p, main_layout[0]);
+    }
+
+    let table_area = main_layout[1];
+
     let mut rows = Vec::new();
 
     rows.push(Row::new(vec![
         Cell::from("─".repeat(100)),
         Cell::from("┼"),
         Cell::from("─".repeat(100)),
+        Cell::from("┼"),
+        Cell::from("─".repeat(100)),
     ]));
 
     for pkg in all_packages {
+        let (description, version) = if let Some(info) = app.package_info.get(&pkg.name) {
+            info.clone()
+        } else {
+            (pkg.description.clone(), String::new())
+        };
+
         rows.push(Row::new(vec![
             Cell::from(format!(" {}", pkg.name)),
             Cell::from("│"),
-            Cell::from(format!(" {}", pkg.description)),
+            Cell::from(format!(" {}", version)),
+            Cell::from("│"),
+            Cell::from(format!(" {}", description)),
         ]));
     }
 
     let widths = [
-        Constraint::Percentage(30),
+        Constraint::Percentage(20),
+        Constraint::Length(1),
+        Constraint::Percentage(15),
         Constraint::Length(1),
         Constraint::Min(10),
     ];
@@ -54,11 +93,13 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             Row::new(vec![
                 Cell::from(" Name"),
                 Cell::from("│"),
+                Cell::from(" Version"),
+                Cell::from("│"),
                 Cell::from(" Description"),
             ])
             .style(Style::default().add_modifier(Modifier::BOLD)),
         )
         .column_spacing(0);
 
-    frame.render_widget(table, area);
+    frame.render_widget(table, table_area);
 }
