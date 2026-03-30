@@ -4,7 +4,6 @@ use ratatui::{prelude::*, widgets::*};
 pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect) {
     let mut rows = Vec::new();
 
-    // Header separator row
     rows.push(
         Row::new(vec![
             Cell::from("─".repeat(100)),

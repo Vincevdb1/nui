@@ -13,14 +13,12 @@ pub fn extract_packages(content: &str) -> Vec<Package> {
         "extraPackages",
     ];
 
-    // Try direct read for each common path
     for path in common_paths {
         if let Ok(value) = nix_editor::read::readvalue(content, path) {
             extract_from_list_string(&value, &mut packages);
         }
     }
 
-    // If still empty, or to be more thorough, search the AST for any attribute named like our common paths
     if packages.is_empty() {
         let ast = Root::parse(content);
         use rnix::SyntaxKind;
@@ -48,7 +46,6 @@ pub fn extract_packages(content: &str) -> Vec<Package> {
         }
     }
 
-    // Deduplicate
     let mut seen = std::collections::HashSet::new();
     packages.retain(|p| seen.insert(p.name.clone()));
 
@@ -60,7 +57,6 @@ fn extract_from_list_string(value: &str, packages: &mut Vec<Package>) {
         if let Some(end) = value.rfind(']') {
             let inside = &value[start + 1..end];
             for item in inside.split_whitespace() {
-                // Basic cleanup of common prefixes/suffixes
                 let name = item
                     .trim_start_matches("pkgs.")
                     .trim_start_matches('(')
@@ -111,7 +107,6 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
     if let Ok(outputs_val) = nix_editor::read::readvalue(content, "outputs") {
         let mut replacements: HashMap<String, String> = HashMap::new();
 
-        // Extract let bindings for replacements
         let ast = Root::parse(&outputs_val);
         use rnix::SyntaxKind;
         for node in ast.syntax().descendants() {
@@ -154,7 +149,6 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
                     ) {
                         let mut path = parts[1..].join(".");
 
-                        // Apply replacements
                         for (k, v) in &replacements {
                             path = path.replace(k, v);
                         }
@@ -185,7 +179,6 @@ pub fn add_input(content: &str, name: &str, url: &str) -> String {
     let ast = Root::parse(content);
     use rnix::SyntaxKind;
 
-    // Try to find the inputs = { ... } block
     for node in ast.syntax().descendants() {
         if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
             let has_inputs_path = node.children().any(|c| {
@@ -208,7 +201,6 @@ pub fn add_input(content: &str, name: &str, url: &str) -> String {
 
                     if let Some(close_brace) = close_brace_opt {
                         let mut item_indent = "    ".to_string();
-                        // Try to detect indentation from existing items
                         for child in set_node.children() {
                             if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
                                 if let Some(prev) = child.prev_sibling_or_token() {
@@ -223,7 +215,6 @@ pub fn add_input(content: &str, name: &str, url: &str) -> String {
                             }
                         }
 
-                        // Find the whitespace right before the closing brace to determine its indent
                         let mut ws_before_brace = String::new();
                         let mut start_of_replacement = close_brace.text_range().start();
                         if let Some(prev) = close_brace.prev_sibling_or_token() {
@@ -240,7 +231,6 @@ pub fn add_input(content: &str, name: &str, url: &str) -> String {
                                 "".to_string()
                             };
 
-                        // Construct the new entry with a leading newline and proper indentation
                         let new_entry = format!(
                             "\n{}{}.url = \"{}\";\n{}}}",
                             item_indent, name, url, closing_brace_indent
@@ -257,7 +247,6 @@ pub fn add_input(content: &str, name: &str, url: &str) -> String {
         }
     }
 
-    // Fallback to nix-editor if manual insertion fails
     let query = format!("inputs.{}.url", name);
     let value = format!("\"{}\"", url);
     match nix_editor::write::write(content, &query, &value) {

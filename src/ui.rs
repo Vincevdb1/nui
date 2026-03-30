@@ -29,13 +29,11 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         ])
         .split(body_chunks[0]);
 
-    // Column 2: 2 rows (1st row 67%, 2nd row 33%)
     let col2_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
         .split(body_chunks[1]);
 
-    // Column 1 Components
     title::render(frame, col1_chunks[0], app.selected_index == 1);
     context::render(app, frame, col1_chunks[1], app.selected_index == 2);
     inputs::render(&app.inputs, frame, col1_chunks[2], app.selected_index == 3);
@@ -47,7 +45,6 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         app.selected_configuration_index,
     );
 
-    // Column 2 Components
     content::render(app, frame, col2_chunks[0], app.selected_index);
     command_log::render(frame, col2_chunks[1], app.selected_index == 5);
 

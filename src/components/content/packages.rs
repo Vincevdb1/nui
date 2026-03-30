@@ -5,21 +5,18 @@ use ratatui::{prelude::*, widgets::*};
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let mut all_packages = Vec::new();
 
-    // Extract from selected context file
     if let Some(selected_file) = app.nix_files.get(app.selected_nix_file_index) {
         if let Ok(content) = std::fs::read_to_string(&selected_file.path) {
             all_packages.extend(extract_packages(&content));
         }
     }
 
-    // Extract from selected configuration
     if let Some(selected_config) = app.configurations.get(app.selected_configuration_index) {
         if let Some(content) = &selected_config.content {
             all_packages.extend(extract_packages(content));
         }
     }
 
-    // Deduplicate by name
     let mut seen = std::collections::HashSet::new();
     all_packages.retain(|p| seen.insert(p.name.clone()));
 
@@ -32,7 +29,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 
     let mut rows = Vec::new();
 
-    // Header separator row
     rows.push(
         Row::new(vec![
             Cell::from("─".repeat(100)),

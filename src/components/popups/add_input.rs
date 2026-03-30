@@ -26,13 +26,12 @@ pub fn render(
         .direction(Direction::Vertical)
         .margin(2)
         .constraints([
-            Constraint::Min(0),     // Suggestions
-            Constraint::Length(10), // Manual Input block
-            Constraint::Length(1),  // Footer
+            Constraint::Min(0),
+            Constraint::Length(10),
+            Constraint::Length(1),
         ])
         .split(area);
 
-    // Suggestions List
     let list_block_style = if cursor == 0 {
         Style::default()
             .fg(Color::Cyan)
@@ -115,7 +114,6 @@ pub fn render(
         frame.render_stateful_widget(list, chunks[0], &mut suggestions.list_state);
     }
 
-    // Manual Input Block
     let manual_block = Block::default()
         .title(" Manual Input ")
         .borders(Borders::ALL)
@@ -166,7 +164,6 @@ pub fn render(
     );
     frame.render_widget(url_input, manual_chunks[1]);
 
-    // Footer
     let footer =
         Paragraph::new("Press 'Enter' to confirm/select, 'Esc' to cancel, 'Tab' to switch fields")
             .style(Style::default().fg(Color::DarkGray));

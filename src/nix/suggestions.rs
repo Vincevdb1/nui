@@ -39,7 +39,6 @@ impl Suggestions {
 
     pub fn fetch_branches(tx: std::sync::mpsc::Sender<Vec<(String, String)>>) {
         std::thread::spawn(move || {
-            // Fetch branches from GitHub API using reqwest (blocking)
             let client = reqwest::blocking::Client::builder()
                 .user_agent("nui-tui-app")
                 .build();
