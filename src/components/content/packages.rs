@@ -29,14 +29,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 
     let mut rows = Vec::new();
 
-    rows.push(
-        Row::new(vec![
-            Cell::from("─".repeat(100)),
-            Cell::from("┼"),
-            Cell::from("─".repeat(100)),
-        ])
-        .style(Style::default().fg(Color::DarkGray)),
-    );
+    rows.push(Row::new(vec![
+        Cell::from("─".repeat(100)),
+        Cell::from("┼"),
+        Cell::from("─".repeat(100)),
+    ]));
 
     for pkg in all_packages {
         rows.push(Row::new(vec![

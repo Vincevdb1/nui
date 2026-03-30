@@ -4,14 +4,11 @@ use ratatui::{prelude::*, widgets::*};
 pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect) {
     let mut rows = Vec::new();
 
-    rows.push(
-        Row::new(vec![
-            Cell::from("─".repeat(100)),
-            Cell::from("┼"),
-            Cell::from("─".repeat(100)),
-        ])
-        .style(Style::default().fg(Color::DarkGray)),
-    );
+    rows.push(Row::new(vec![
+        Cell::from("─".repeat(100)),
+        Cell::from("┼"),
+        Cell::from("─".repeat(100)),
+    ]));
 
     for input in inputs {
         rows.push(Row::new(vec![
