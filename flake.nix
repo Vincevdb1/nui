@@ -11,19 +11,36 @@
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
+      manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
     in
     {
+      packages.${system}.default = pkgs.rustPlatform.buildRustPackage {
+        pname = manifest.name;
+        version = manifest.version;
+        src = ./.;
+
+        cargoLock = {
+          lockFile = ./Cargo.lock;
+        };
+
+        nativeBuildInputs = with pkgs; [
+          pkg-config
+        ];
+
+        buildInputs = with pkgs; [
+        ];
+      };
+
       devShells.${system}.default = pkgs.mkShell {
         name = "nui";
 
+        inputsFrom = [ self.packages.${system}.default ];
+
         buildInputs = with pkgs; [
-          rustc
-          cargo
           cargo-generate
           rust-analyzer
           clippy
           rustfmt
-          pkg-config
         ];
 
         shellHook = "";
