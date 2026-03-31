@@ -29,10 +29,17 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         ])
         .split(body_chunks[0]);
 
-    let col2_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
-        .split(body_chunks[1]);
+    let col2_chunks = if app.selected_index == 5 {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0)])
+            .split(body_chunks[1])
+    } else {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
+            .split(body_chunks[1])
+    };
 
     title::render(frame, col1_chunks[0], app.selected_index == 1);
     context::render(app, frame, col1_chunks[1], app.selected_index == 2);
@@ -45,14 +52,24 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         app.selected_configuration_index,
     );
 
-    content::render(app, frame, col2_chunks[0], app.selected_index);
-    command_log::render(
-        frame,
-        col2_chunks[1],
-        app.selected_index == 5,
-        &app.logs,
-        &mut app.command_log_state,
-    );
+    if app.selected_index != 5 {
+        content::render(app, frame, col2_chunks[0], app.selected_index);
+        command_log::render(
+            frame,
+            col2_chunks[1],
+            app.selected_index == 5,
+            &app.logs,
+            &mut app.command_log_state,
+        );
+    } else {
+        command_log::render(
+            frame,
+            col2_chunks[0],
+            app.selected_index == 5,
+            &app.logs,
+            &mut app.command_log_state,
+        );
+    }
 
     let footer = Paragraph::new("Press 'Tab' to switch focus, 'q' to quit")
         .block(Block::default().borders(Borders::NONE));

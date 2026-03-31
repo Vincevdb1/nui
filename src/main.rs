@@ -126,11 +126,11 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
             KeyCode::Char('q') => app.quit(),
             KeyCode::Tab => app.next_tab(),
             KeyCode::BackTab => app.previous_tab(),
-            KeyCode::Char('0') => app.selected_index = 0,
             KeyCode::Char('1') => app.selected_index = 1,
             KeyCode::Char('2') => app.selected_index = 2,
             KeyCode::Char('3') => app.selected_index = 3,
             KeyCode::Char('4') => app.selected_index = 4,
+            KeyCode::Char('5') => app.selected_index = 5,
             KeyCode::Char('a') if app.selected_index == 3 => {
                 app.is_adding_input = true;
                 app.new_input_name.clear();
@@ -151,6 +151,20 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                         app.selected_configuration_index =
                             (app.selected_configuration_index + 1) % app.configurations.len();
                         app.fetch_package_details_from_config();
+                    }
+                } else if app.selected_index == 5 {
+                    if !app.logs.is_empty() {
+                        let i = match app.command_log_state.selected() {
+                            Some(i) => {
+                                if i >= app.logs.len() - 1 {
+                                    i
+                                } else {
+                                    i + 1
+                                }
+                            }
+                            None => 0,
+                        };
+                        app.command_log_state.select(Some(i));
                     }
                 }
             }
@@ -173,6 +187,20 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                             app.selected_configuration_index - 1
                         };
                         app.fetch_package_details_from_config();
+                    }
+                } else if app.selected_index == 5 {
+                    if !app.logs.is_empty() {
+                        let i = match app.command_log_state.selected() {
+                            Some(i) => {
+                                if i == 0 {
+                                    0
+                                } else {
+                                    i - 1
+                                }
+                            }
+                            None => 0,
+                        };
+                        app.command_log_state.select(Some(i));
                     }
                 }
             }

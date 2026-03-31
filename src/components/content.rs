@@ -18,14 +18,14 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
                 .get(app.selected_configuration_index)
                 .map(|c| c.path.as_str())
                 .unwrap_or("None");
-            format!(" [0] Content: {} / {} ", context_name, config_path)
+            format!(" Content: {} / {} ", context_name, config_path)
         }
-        3 => " [0] Content: Inputs ".to_string(),
-        1 => " [0] Content: Title ".to_string(),
-        _ => " [0] Content ".to_string(),
+        3 => " Content: Inputs ".to_string(),
+        1 => " Content: Title ".to_string(),
+        _ => " Content ".to_string(),
     };
 
-    let is_selected = selected_index == 0;
+    let is_selected = false;
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
