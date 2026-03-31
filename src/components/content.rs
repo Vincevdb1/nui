@@ -5,7 +5,7 @@ pub mod inputs;
 pub mod packages;
 pub mod title;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, selected_index: usize) {
+pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usize) {
     let title = match selected_index {
         2 | 4 => {
             let context_name = app

@@ -1,7 +1,8 @@
 use crate::app::App;
 use ratatui::{prelude::*, widgets::*};
+use throbber_widgets_tui::Throbber;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect) {
+pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let mut all_packages = Vec::new();
 
     for (name, (description, version)) in &app.package_info {
@@ -16,9 +17,32 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 
     if all_packages.is_empty() {
         if app.fetching_package_details {
-            let p = Paragraph::new("Fetching package details...")
-                .alignment(Alignment::Center);
-            frame.render_widget(p, area);
+            let vertical_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Fill(1),
+                    Constraint::Length(1),
+                    Constraint::Fill(1),
+                ])
+                .split(area);
+
+            let label = "Fetching package details";
+            let label_len = label.len() as u16 + 3; // +3 for the spinner and space
+
+            let horizontal_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Fill(1),
+                    Constraint::Length(label_len),
+                    Constraint::Fill(1),
+                ])
+                .split(vertical_chunks[1]);
+            
+            let throbber = Throbber::default()
+                .label(label)
+                .throbber_set(throbber_widgets_tui::BRAILLE_SIX_DOUBLE);
+            
+            frame.render_stateful_widget(throbber, horizontal_chunks[1], &mut app.throbber_state);
         } else {
             let p = Paragraph::new("No packages found in selected configuration.")
                 .alignment(Alignment::Center);

@@ -32,6 +32,7 @@ pub struct App {
     pub logs: Vec<String>,
     pub log_rx: Receiver<String>,
     pub command_log_state: ListState,
+    pub throbber_state: throbber_widgets_tui::ThrobberState,
 }
 
 impl App {
@@ -77,6 +78,7 @@ impl App {
             logs: Vec::new(),
             log_rx,
             command_log_state: ListState::default(),
+            throbber_state: throbber_widgets_tui::ThrobberState::default(),
         };
         app.fetch_package_details_from_config();
         app
@@ -165,6 +167,7 @@ impl App {
 
     pub fn tick(&mut self) {
         self.process_suggestions();
+        self.throbber_state.calc_next();
     }
 
     pub fn next_tab(&mut self) {
