@@ -38,7 +38,7 @@ impl Suggestions {
     }
 
     pub fn fetch_branches(tx: std::sync::mpsc::Sender<Vec<(String, String)>>) {
-        crate::command_log("Fetching nixpkgs branches from GitHub API...");
+        crate::log_action("Fetching nixpkgs branches", "GET https://api.github.com/repos/nixos/nixpkgs/branches");
         std::thread::spawn(move || {
             let client = reqwest::blocking::Client::builder()
                 .user_agent("nui-tui-app")
@@ -81,16 +81,17 @@ impl Suggestions {
                                     }
                                 });
 
+                                crate::log_output("GitHub Output", format!("Successfully fetched {} branches", sorted_branches.len()));
                                 let _ = tx.send(sorted_branches);
                             } else {
-                                crate::command_log("Failed to parse GitHub API response for branches");
+                                crate::log_output("GitHub Error", "Failed to parse GitHub API response for branches");
                             }
                         } else {
-                            crate::command_log(format!("GitHub API error: {}", response.status()));
+                            crate::log_output("GitHub Error", format!("GitHub API error: {}", response.status()));
                         }
                     }
                     Err(e) => {
-                        crate::command_log(format!("Failed to fetch branches: {}", e));
+                        crate::log_output("GitHub Error", format!("Failed to fetch branches: {}", e));
                     }
                 }
             }

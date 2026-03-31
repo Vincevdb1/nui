@@ -49,10 +49,14 @@ impl Package {
           extract = t: {};
         in extract p"#, extract_logic);
 
-        let mut command = Command::new("nix");
         let attr_path = format!("{}#{}", flake_path, target_attr);
-        crate::command_log(format!("Evaluating nix expressions for {}...", attr_path));
         
+        crate::log_action(
+            "Evaluating nix expressions",
+            format!("nix eval {}", attr_path)
+        );
+        
+        let mut command = Command::new("nix");
         command.args([
             "eval",
             &attr_path,
@@ -73,6 +77,7 @@ impl Package {
             }
 
             if let Ok(eval_results) = serde_json::from_slice::<Vec<EvalPkg>>(&output.stdout) {
+                let count = eval_results.len();
                 for pkg in eval_results {
                     let key = if !pkg.pname.is_empty() {
                         pkg.pname
@@ -81,12 +86,15 @@ impl Package {
                     };
                     results.insert(key, (pkg.description, pkg.version));
                 }
+                crate::log_output("Nix Output", format!("Successfully evaluated {} packages", count));
                 Ok(results)
             } else {
+                crate::log_output("Nix Error", "Failed to parse nix eval output");
                 Err("Failed to parse nix eval output".to_string())
             }
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            crate::log_output("Nix Error", stderr.to_string());
             Err(stderr.to_string())
         }
     }

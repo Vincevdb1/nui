@@ -71,7 +71,16 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         );
     }
 
-    let footer = Paragraph::new("Press 'Tab' to switch focus, 'q' to quit")
+    let footer_text = match app.selected_index {
+        1 => "Tab: Switch focus | 1-5: Select tab | q: Quit",
+        2 => "j/k: Select File | Tab: Switch focus | 1-5: Select tab | q: Quit",
+        3 => "a: Add Input | Tab: Switch focus | 1-5: Select tab | q: Quit",
+        4 => "j/k: Select Config | Tab: Switch focus | 1-5: Select tab | q: Quit",
+        5 => "j/k: Scroll Logs | Tab: Switch focus | 1-5: Select tab | q: Quit",
+        _ => "Press 'Tab' to switch focus, 'q' to quit",
+    };
+
+    let footer = Paragraph::new(footer_text)
         .block(Block::default().borders(Borders::NONE));
     frame.render_widget(footer, chunks[1]);
 

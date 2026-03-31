@@ -5,7 +5,7 @@ mod nix;
 mod tui;
 mod ui;
 
-pub use components::command_log::command_log;
+pub use components::command_log::{command_log, log_action, log_output};
 
 use crate::app::App;
 use color_eyre::Result;
@@ -38,6 +38,12 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
     if let Event::Key(key) = event {
         if app.is_adding_input {
             match key.code {
+                KeyCode::Esc | KeyCode::Char('q') if app.input_cursor == 0 => {
+                    app.is_adding_input = false;
+                    app.new_input_name.clear();
+                    app.new_input_url.clear();
+                    app.input_cursor = 0;
+                }
                 KeyCode::Esc => {
                     app.is_adding_input = false;
                     app.new_input_name.clear();
@@ -154,9 +160,10 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
                     }
                 } else if app.selected_index == 5 {
                     if !app.logs.is_empty() {
+                        let total_lines = crate::components::command_log::count_lines(&app.logs);
                         let i = match app.command_log_state.selected() {
                             Some(i) => {
-                                if i >= app.logs.len() - 1 {
+                                if i >= total_lines - 1 {
                                     i
                                 } else {
                                     i + 1

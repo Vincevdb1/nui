@@ -4,6 +4,7 @@ use crate::nix::{
     flake::{extract_configurations, extract_inputs},
     suggestions::Suggestions,
 };
+use crate::components::command_log::LogEntry;
 use ratatui::widgets::ListState;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -29,8 +30,8 @@ pub struct App {
     pub rx: Receiver<Vec<(String, String)>>,
     pub pkg_tx: Sender<Result<HashMap<String, (String, String)>, String>>,
     pub pkg_rx: Receiver<Result<HashMap<String, (String, String)>, String>>,
-    pub logs: Vec<String>,
-    pub log_rx: Receiver<String>,
+    pub logs: Vec<LogEntry>,
+    pub log_rx: Receiver<LogEntry>,
     pub command_log_state: ListState,
     pub throbber_state: throbber_widgets_tui::ThrobberState,
 }
@@ -44,7 +45,7 @@ impl App {
         crate::command_log("Initializing NUI Application...");
         
         let nix_files = find_nix_files();
-        crate::command_log(format!("Found {} nix files", nix_files.len()));
+        crate::log_output("Filesystem", format!("Found {} nix files", nix_files.len()));
 
         
         let (inputs, configurations) = if let Some(file) = nix_files.first() {
@@ -92,11 +93,13 @@ impl App {
         }
         if new_logs {
             if !self.logs.is_empty() {
-                self.command_log_state.select(Some(self.logs.len() - 1));
+                let total_lines = crate::components::command_log::count_lines(&self.logs);
+                if total_lines > 0 {
+                    self.command_log_state.select(Some(total_lines - 1));
+                }
             }
         }
         if let Ok(branches) = self.rx.try_recv() {
-            crate::command_log("Successfully fetched nixpkgs branches");
             self.suggestions.all = branches;
             self.update_suggestions();
             self.suggestions.is_loading = false;
@@ -106,14 +109,14 @@ impl App {
             self.pending_fetches.clear();
             match res {
                 Ok(results) => {
-                    crate::command_log(format!("Successfully fetched {} package details", results.len()));
+                    crate::log_output("Nix Output", format!("Successfully fetched {} package details", results.len()));
                     self.package_fetch_error = None;
                     for (name, details) in results {
                         self.package_info.insert(name, details);
                     }
                 }
                 Err(e) => {
-                    crate::command_log(format!("Error fetching package details: {}", e));
+                    crate::log_output("Nix Error", format!("Error fetching package details: {}", e));
                     self.package_fetch_error = Some(e);
                 }
             }
@@ -125,7 +128,10 @@ impl App {
             let config_type = config.config_type.clone();
             let config_name = config.path.clone();
 
-            crate::command_log(format!("Fetching package details for {} ({})", config_name, config_type));
+            crate::log_action(
+                format!("Fetching package details for {}", config_name),
+                format!("Config Type: {}", config_type)
+            );
 
             let flake_path = if let Some(file) = self.nix_files.get(self.selected_nix_file_index) {
                 let parent = file.path.parent().unwrap_or(std::path::Path::new("."));
@@ -216,14 +222,18 @@ impl App {
         };
 
         let content = std::fs::read_to_string(&path).unwrap_or_default();
-        crate::command_log(format!("Adding new input: {} ({}) to {:?}", self.new_input_name, self.new_input_url, path));
+        crate::log_action(
+            format!("Adding input: {}", self.new_input_name),
+            format!("Target: {:?}\nURL: {}", path, self.new_input_url)
+        );
         let new_content =
             crate::nix::flake::add_input(&content, &self.new_input_name, &self.new_input_url);
         if let Err(e) = std::fs::write(&path, new_content) {
+            crate::log_output("Filesystem Error", format!("Failed to write {:?}: {}", path, e));
             eprintln!("Failed to write {:?}: {}", path, e);
+        } else {
+            crate::log_output("Filesystem Output", format!("Successfully updated {:?}", path));
         }
-
-        self.update_context();
 
         self.is_adding_input = false;
         self.new_input_name.clear();

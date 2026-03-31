@@ -164,9 +164,14 @@ pub fn render(
     );
     frame.render_widget(url_input, manual_chunks[1]);
 
-    let footer =
-        Paragraph::new("Press 'Enter' to confirm/select, 'Esc' to cancel, 'Tab' to switch fields")
-            .style(Style::default().fg(Color::DarkGray));
+    let footer_text = match cursor {
+        0 => "Enter: Select | j/k: Nav Suggestions | Tab: Next Field | q/Esc: Close",
+        1 => "Type Input Name... | Tab: Next Field | Esc: Close",
+        2 => "Type Input URL... | Enter: Add | Tab: Next Field | Esc: Close",
+        _ => "Press 'Esc' to close",
+    };
+
+    let footer = Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, chunks[2]);
 }
 
