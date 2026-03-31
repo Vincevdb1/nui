@@ -1,29 +1,29 @@
 use crate::app::App;
-use crate::nix::flake::extract_packages;
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let mut all_packages = Vec::new();
 
-    if let Some(selected_file) = app.nix_files.get(app.selected_nix_file_index) {
-        if let Ok(content) = std::fs::read_to_string(&selected_file.path) {
-            all_packages.extend(extract_packages(&content));
-        }
+    for (name, (description, version)) in &app.package_info {
+        all_packages.push(crate::nix::Package {
+            name: name.clone(),
+            description: description.clone(),
+            version: Some(version.clone()),
+        });
     }
 
-    if let Some(selected_config) = app.configurations.get(app.selected_configuration_index) {
-        if let Some(content) = &selected_config.content {
-            all_packages.extend(extract_packages(content));
-        }
-    }
-
-    let mut seen = std::collections::HashSet::new();
-    all_packages.retain(|p| seen.insert(p.name.clone()));
+    all_packages.sort_by(|a, b| a.name.cmp(&b.name));
 
     if all_packages.is_empty() {
-        let p = Paragraph::new("No packages found in selected context or configuration.")
-            .alignment(Alignment::Center);
-        frame.render_widget(p, area);
+        if app.fetching_package_details {
+            let p = Paragraph::new("Fetching package details...")
+                .alignment(Alignment::Center);
+            frame.render_widget(p, area);
+        } else {
+            let p = Paragraph::new("No packages found in selected configuration.")
+                .alignment(Alignment::Center);
+            frame.render_widget(p, area);
+        }
         return;
     }
 
@@ -38,18 +38,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     ]));
 
     for pkg in all_packages {
-        let (description, version) = if let Some(info) = app.package_info.get(&pkg.name) {
-            info.clone()
-        } else {
-            (pkg.description.clone(), String::new())
-        };
-
         rows.push(Row::new(vec![
             Cell::from(format!(" {}", pkg.name)),
             Cell::from("│"),
-            Cell::from(format!(" {}", version)),
+            Cell::from(format!(" {}", pkg.version.unwrap_or_default())),
             Cell::from("│"),
-            Cell::from(format!(" {}", description)),
+            Cell::from(format!(" {}", pkg.description)),
         ]));
     }
 

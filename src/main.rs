@@ -131,7 +131,6 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
             KeyCode::Char('2') => app.selected_index = 2,
             KeyCode::Char('3') => app.selected_index = 3,
             KeyCode::Char('4') => app.selected_index = 4,
-            KeyCode::Char('5') => app.selected_index = 5,
             KeyCode::Char('a') if app.selected_index == 3 => {
                 app.is_adding_input = true;
                 app.new_input_name.clear();

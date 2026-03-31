@@ -139,6 +139,7 @@ impl App {
 
             self.fetching_package_details = true;
             self.package_fetch_error = None;
+            self.package_info.clear();
             self.pending_fetches.clear();
             // We don't know the exact package names yet without evaluating,
             // but we can mark the app as "fetching" in some way if we wanted.
@@ -174,7 +175,6 @@ impl App {
             4 => 1,
             _ => 1,
         };
-        self.fetch_package_details_from_config();
     }
 
     pub fn previous_tab(&mut self) {
@@ -185,7 +185,6 @@ impl App {
             4 => 3,
             _ => 1,
         };
-        self.fetch_package_details_from_config();
     }
 
     pub fn quit(&mut self) {
