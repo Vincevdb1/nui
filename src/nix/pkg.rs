@@ -33,7 +33,9 @@ impl Package {
         };
 
         let apply_expr = "p: let
-          getPkgInfo = p: if p ? pname || p ? name then {
+          getPkgInfo = p: let 
+            tried = builtins.tryEval p;
+          in if tried.success && (p ? pname || p ? name) then {
             pname = p.pname or (builtins.parseDrvName p.name).name;
             name = p.name or \"\";
             version = p.version or (builtins.parseDrvName p.name).version;
