@@ -3,7 +3,6 @@
 
   inputs = {
     nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-25.11";
-    test-input.url = "nonvalid:test/test";
   };
 
   outputs =

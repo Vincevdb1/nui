@@ -10,7 +10,7 @@ pub struct Package {
 }
 
 impl Package {
-    pub fn fetch_from_config(config_type: &str, config_name: &str) -> Result<HashMap<String, (String, String)>, String> {
+    pub fn fetch_from_config(flake_path: &str, config_type: &str, config_name: &str) -> Result<HashMap<String, (String, String)>, String> {
         let mut results = HashMap::new();
         
         let config_attr = if config_type == "devShells" {
@@ -32,35 +32,31 @@ impl Package {
             _ => return Ok(results),
         };
 
-        let nix_script = format!(
-            "let
-              flake = builtins.getFlake (toString ./.);
-              target = flake.outputs.{};
-              getPkgInfo = p: if p ? pname || p ? name then {{
-                pname = p.pname or (builtins.parseDrvName p.name).name;
-                name = p.name or \"\";
-                version = p.version or (builtins.parseDrvName p.name).version;
-                description = p.meta.description or \"\";
-              }} else null;
-              extract = t: if builtins.isList t then
-                builtins.filter (x: x != null) (map getPkgInfo t)
-              else if builtins.isAttrs t then
-                if t ? buildInputs || t ? nativeBuildInputs || t ? packages then
-                  (extract (t.packages or [])) ++ (extract (t.buildInputs or [])) ++ (extract (t.nativeBuildInputs or []))
-                else
-                  []
-              else [];
-            in extract target",
-            target_attr
-        );
+        let apply_expr = "p: let
+          getPkgInfo = p: if p ? pname || p ? name then {
+            pname = p.pname or (builtins.parseDrvName p.name).name;
+            name = p.name or \"\";
+            version = p.version or (builtins.parseDrvName p.name).version;
+            description = p.meta.description or \"\";
+          } else null;
+          extract = t: if builtins.isList t then
+            builtins.filter (x: x != null) (map getPkgInfo t)
+          else if builtins.isAttrs t then
+            if t ? buildInputs || t ? nativeBuildInputs || t ? packages then
+              (extract (t.packages or [])) ++ (extract (t.buildInputs or [])) ++ (extract (t.nativeBuildInputs or []))
+            else
+              []
+          else [];
+        in extract p";
 
         let mut command = Command::new("nix");
         command.args([
             "eval",
+            &format!("{}#{}", flake_path, target_attr),
             "--json",
             "--impure",
-            "--expr",
-            &nix_script,
+            "--apply",
+            apply_expr,
         ]);
 
         let output = command.output().map_err(|e| e.to_string())?;

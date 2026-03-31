@@ -32,16 +32,21 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let flake_content = std::fs::read_to_string("flake.nix").unwrap_or_default();
-        let inputs = extract_inputs(&flake_content);
-        let configurations = extract_configurations(&flake_content);
         let (tx, rx) = mpsc::channel();
         let (pkg_tx, pkg_rx) = mpsc::channel();
+        let nix_files = find_nix_files();
+        
+        let (inputs, configurations) = if let Some(file) = nix_files.first() {
+            let flake_content = std::fs::read_to_string(&file.path).unwrap_or_default();
+            (extract_inputs(&flake_content), extract_configurations(&flake_content))
+        } else {
+            (Vec::new(), Vec::new())
+        };
 
         let mut app = Self {
             should_quit: false,
             selected_index: 2,
-            nix_files: find_nix_files(),
+            nix_files,
             selected_nix_file_index: 0,
             selected_configuration_index: 0,
             inputs,
@@ -92,6 +97,18 @@ impl App {
             let config_type = config.config_type.clone();
             let config_name = config.path.clone();
 
+            let flake_path = if let Some(file) = self.nix_files.get(self.selected_nix_file_index) {
+                let parent = file.path.parent().unwrap_or(std::path::Path::new("."));
+                let p = parent.to_string_lossy().to_string();
+                if p.is_empty() || p == "." {
+                    ".".to_string()
+                } else {
+                    format!("./{}", p)
+                }
+            } else {
+                ".".to_string()
+            };
+
             self.fetching_package_details = true;
             self.package_fetch_error = None;
             self.pending_fetches.clear();
@@ -100,7 +117,7 @@ impl App {
             
             let tx = self.pkg_tx.clone();
             std::thread::spawn(move || {
-                let res = Package::fetch_from_config(&config_type, &config_name);
+                let res = Package::fetch_from_config(&flake_path, &config_type, &config_name);
                 let _ = tx.send(res);
             });
         }
