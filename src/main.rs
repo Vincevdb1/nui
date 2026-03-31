@@ -5,6 +5,8 @@ mod nix;
 mod tui;
 mod ui;
 
+pub use components::command_log::command_log;
+
 use crate::app::App;
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode};

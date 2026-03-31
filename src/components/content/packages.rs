@@ -27,33 +27,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         return;
     }
 
-    let main_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(if app.package_fetch_error.is_some() {
-                3
-            } else {
-                1
-            }), // Indicator/Error
-            Constraint::Min(0), // Table
-        ])
-        .split(area);
-
-    if let Some(err) = &app.package_fetch_error {
-        let p = Paragraph::new(format!("Flake evaluation failed: {}", err))
-            .style(Style::default().fg(Color::Red))
-            .wrap(Wrap { trim: true })
-            .alignment(Alignment::Left);
-        frame.render_widget(p, main_layout[0]);
-    } else if app.fetching_package_details {
-        let p = Paragraph::new("Fetching package details from flake evaluation...")
-            .style(Style::default().fg(Color::Yellow))
-            .alignment(Alignment::Left);
-        frame.render_widget(p, main_layout[0]);
-    }
-
-    let table_area = main_layout[1];
-
     let mut rows = Vec::new();
 
     rows.push(Row::new(vec![
@@ -101,5 +74,5 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         )
         .column_spacing(0);
 
-    frame.render_widget(table, table_area);
+    frame.render_widget(table, area);
 }

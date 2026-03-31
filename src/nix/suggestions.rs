@@ -38,6 +38,7 @@ impl Suggestions {
     }
 
     pub fn fetch_branches(tx: std::sync::mpsc::Sender<Vec<(String, String)>>) {
+        crate::command_log("Fetching nixpkgs branches from GitHub API...");
         std::thread::spawn(move || {
             let client = reqwest::blocking::Client::builder()
                 .user_agent("nui-tui-app")
@@ -48,37 +49,48 @@ impl Suggestions {
                 let response = client.get("https://api.github.com/repos/nixos/nixpkgs/branches?protected=true&per_page=100")
                     .send();
 
-                if let Ok(response) = response {
-                    if let Ok(branches_json) = response.json::<Vec<GitHubBranch>>() {
-                        let branches: Vec<(String, String)> = branches_json
-                            .into_iter()
-                            .filter_map(|b| {
-                                let branch = b.name;
-                                // We want nixos-XX.XX branches, master, and nixpkgs-unstable
-                                if branch.starts_with("nixos-")
-                                    || branch == "nixpkgs-unstable"
-                                    || branch == "master"
-                                {
-                                    let url = format!("github:nixos/nixpkgs/{}", branch);
-                                    return Some((branch, url));
-                                }
-                                None
-                            })
-                            .collect();
+                match response {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            if let Ok(branches_json) = response.json::<Vec<GitHubBranch>>() {
+                                let branches: Vec<(String, String)> = branches_json
+                                    .into_iter()
+                                    .filter_map(|b| {
+                                        let branch = b.name;
+                                        // We want nixos-XX.XX branches, master, and nixpkgs-unstable
+                                        if branch.starts_with("nixos-")
+                                            || branch == "nixpkgs-unstable"
+                                            || branch == "master"
+                                        {
+                                            let url = format!("github:nixos/nixpkgs/{}", branch);
+                                            return Some((branch, url));
+                                        }
+                                        None
+                                    })
+                                    .collect();
 
-                        let mut sorted_branches = branches;
-                        // Sort by name, but keep master and nixpkgs-unstable at the top if possible
-                        sorted_branches.sort_by(|a, b| {
-                            if a.0 == "master" || a.0 == "nixpkgs-unstable" {
-                                std::cmp::Ordering::Less
-                            } else if b.0 == "master" || b.0 == "nixpkgs-unstable" {
-                                std::cmp::Ordering::Greater
+                                let mut sorted_branches = branches;
+                                // Sort by name, but keep master and nixpkgs-unstable at the top if possible
+                                sorted_branches.sort_by(|a, b| {
+                                    if a.0 == "master" || a.0 == "nixpkgs-unstable" {
+                                        std::cmp::Ordering::Less
+                                    } else if b.0 == "master" || b.0 == "nixpkgs-unstable" {
+                                        std::cmp::Ordering::Greater
+                                    } else {
+                                        b.0.cmp(&a.0) // Reverse version sort
+                                    }
+                                });
+
+                                let _ = tx.send(sorted_branches);
                             } else {
-                                b.0.cmp(&a.0) // Reverse version sort
+                                crate::command_log("Failed to parse GitHub API response for branches");
                             }
-                        });
-
-                        let _ = tx.send(sorted_branches);
+                        } else {
+                            crate::command_log(format!("GitHub API error: {}", response.status()));
+                        }
+                    }
+                    Err(e) => {
+                        crate::command_log(format!("Failed to fetch branches: {}", e));
                     }
                 }
             }

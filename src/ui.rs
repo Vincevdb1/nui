@@ -46,7 +46,13 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     );
 
     content::render(app, frame, col2_chunks[0], app.selected_index);
-    command_log::render(frame, col2_chunks[1], app.selected_index == 5);
+    command_log::render(
+        frame,
+        col2_chunks[1],
+        app.selected_index == 5,
+        &app.logs,
+        &mut app.command_log_state,
+    );
 
     let footer = Paragraph::new("Press 'Tab' to switch focus, 'q' to quit")
         .block(Block::default().borders(Borders::NONE));

@@ -52,9 +52,12 @@ impl Package {
         in extract p";
 
         let mut command = Command::new("nix");
+        let attr_path = format!("{}#{}", flake_path, target_attr);
+        crate::command_log(format!("Evaluating nix expressions for {}...", attr_path));
+        
         command.args([
             "eval",
-            &format!("{}#{}", flake_path, target_attr),
+            &attr_path,
             "--json",
             "--impure",
             "--apply",

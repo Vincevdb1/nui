@@ -4,6 +4,7 @@ use crate::nix::{
     flake::{extract_configurations, extract_inputs},
     suggestions::Suggestions,
 };
+use ratatui::widgets::ListState;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
 
@@ -28,13 +29,22 @@ pub struct App {
     pub rx: Receiver<Vec<(String, String)>>,
     pub pkg_tx: Sender<Result<HashMap<String, (String, String)>, String>>,
     pub pkg_rx: Receiver<Result<HashMap<String, (String, String)>, String>>,
+    pub logs: Vec<String>,
+    pub log_rx: Receiver<String>,
+    pub command_log_state: ListState,
 }
 
 impl App {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel();
         let (pkg_tx, pkg_rx) = mpsc::channel();
+        let (log_tx, log_rx) = mpsc::channel();
+        crate::components::command_log::init_logger(log_tx);
+        crate::command_log("Initializing NUI Application...");
+        
         let nix_files = find_nix_files();
+        crate::command_log(format!("Found {} nix files", nix_files.len()));
+
         
         let (inputs, configurations) = if let Some(file) = nix_files.first() {
             let flake_content = std::fs::read_to_string(&file.path).unwrap_or_default();
@@ -64,13 +74,27 @@ impl App {
             rx,
             pkg_tx,
             pkg_rx,
+            logs: Vec::new(),
+            log_rx,
+            command_log_state: ListState::default(),
         };
         app.fetch_package_details_from_config();
         app
     }
 
     pub fn process_suggestions(&mut self) {
+        let mut new_logs = false;
+        while let Ok(msg) = self.log_rx.try_recv() {
+            self.logs.push(msg);
+            new_logs = true;
+        }
+        if new_logs {
+            if !self.logs.is_empty() {
+                self.command_log_state.select(Some(self.logs.len() - 1));
+            }
+        }
         if let Ok(branches) = self.rx.try_recv() {
+            crate::command_log("Successfully fetched nixpkgs branches");
             self.suggestions.all = branches;
             self.update_suggestions();
             self.suggestions.is_loading = false;
@@ -80,12 +104,14 @@ impl App {
             self.pending_fetches.clear();
             match res {
                 Ok(results) => {
+                    crate::command_log(format!("Successfully fetched {} package details", results.len()));
                     self.package_fetch_error = None;
                     for (name, details) in results {
                         self.package_info.insert(name, details);
                     }
                 }
                 Err(e) => {
+                    crate::command_log(format!("Error fetching package details: {}", e));
                     self.package_fetch_error = Some(e);
                 }
             }
@@ -96,6 +122,8 @@ impl App {
         if let Some(config) = self.configurations.get(self.selected_configuration_index) {
             let config_type = config.config_type.clone();
             let config_name = config.path.clone();
+
+            crate::command_log(format!("Fetching package details for {} ({})", config_name, config_type));
 
             let flake_path = if let Some(file) = self.nix_files.get(self.selected_nix_file_index) {
                 let parent = file.path.parent().unwrap_or(std::path::Path::new("."));
@@ -184,6 +212,7 @@ impl App {
         };
 
         let content = std::fs::read_to_string(&path).unwrap_or_default();
+        crate::command_log(format!("Adding new input: {} ({}) to {:?}", self.new_input_name, self.new_input_url, path));
         let new_content =
             crate::nix::flake::add_input(&content, &self.new_input_name, &self.new_input_url);
         if let Err(e) = std::fs::write(&path, new_content) {
