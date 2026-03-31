@@ -9,6 +9,7 @@ pub fn find_nix_files() -> Vec<NixFile> {
     };
 
     for entry in WalkDir::new(&current_dir)
+        .max_depth(3)
         .into_iter()
         .filter_entry(|e| {
             let name = e.file_name().to_str().unwrap_or("");
