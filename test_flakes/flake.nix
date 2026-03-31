@@ -21,7 +21,7 @@
           name = "python shell";
 
           buildInputs = with pkgs; [
-            python312Full
+            python312
             isort
           ];
 
