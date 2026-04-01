@@ -36,6 +36,66 @@ fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<()> {
 
 fn handle_events(app: &mut App, event: Event) -> Result<()> {
     if let Event::Key(key) = event {
+        if app.is_adding_package {
+            match key.code {
+                KeyCode::Esc => {
+                    app.is_adding_package = false;
+                    app.package_search_query.clear();
+                    app.package_search_results.clear();
+                }
+                KeyCode::Char('q') if app.package_search_query.is_empty() => {
+                    app.is_adding_package = false;
+                    app.package_search_query.clear();
+                    app.package_search_results.clear();
+                }
+                KeyCode::Char('j') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                    if !app.package_search_results.is_empty() {
+                        let i = (app.package_search_state.selected().unwrap_or(0) + 1) % app.package_search_results.len();
+                        app.package_search_state.select(Some(i));
+                    }
+                }
+                KeyCode::Char('k') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                    if !app.package_search_results.is_empty() {
+                        let i = if app.package_search_state.selected().unwrap_or(0) == 0 {
+                            app.package_search_results.len() - 1
+                        } else {
+                            app.package_search_state.selected().unwrap() - 1
+                        };
+                        app.package_search_state.select(Some(i));
+                    }
+                }
+                KeyCode::Down => {
+                    if !app.package_search_results.is_empty() {
+                        let i = (app.package_search_state.selected().unwrap_or(0) + 1) % app.package_search_results.len();
+                        app.package_search_state.select(Some(i));
+                    }
+                }
+                KeyCode::Up => {
+                    if !app.package_search_results.is_empty() {
+                        let i = if app.package_search_state.selected().unwrap_or(0) == 0 {
+                            app.package_search_results.len() - 1
+                        } else {
+                            app.package_search_state.selected().unwrap() - 1
+                        };
+                        app.package_search_state.select(Some(i));
+                    }
+                }
+                KeyCode::Backspace => {
+                    app.package_search_query.pop();
+                    app.last_search_time = std::time::Instant::now();
+                }
+                KeyCode::Enter => {
+                    app.add_package();
+                }
+                KeyCode::Char(c) => {
+                    app.package_search_query.push(c);
+                    app.last_search_time = std::time::Instant::now();
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+
         if app.is_adding_input {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') if app.input_cursor == 0 => {
@@ -137,6 +197,12 @@ fn handle_events(app: &mut App, event: Event) -> Result<()> {
             KeyCode::Char('3') => app.selected_index = 3,
             KeyCode::Char('4') => app.selected_index = 4,
             KeyCode::Char('5') => app.selected_index = 5,
+            KeyCode::Char('a') if app.selected_index == 2 => {
+                app.is_adding_package = true;
+                app.package_search_query.clear();
+                app.last_search_query.clear();
+                app.package_search_results.clear();
+            }
             KeyCode::Char('a') if app.selected_index == 3 => {
                 app.is_adding_input = true;
                 app.new_input_name.clear();

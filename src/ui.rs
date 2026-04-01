@@ -73,7 +73,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
 
     let footer_text = match app.selected_index {
         1 => "Tab: Switch focus | 1-5: Select tab | q: Quit",
-        2 => "j/k: Select File | Tab: Switch focus | 1-5: Select tab | q: Quit",
+        2 => "a: Add Package | j/k: Select File | Tab: Switch focus | 1-5: Select tab | q: Quit",
         3 => "a: Add Input | Tab: Switch focus | 1-5: Select tab | q: Quit",
         4 => "j/k: Select Config | Tab: Switch focus | 1-5: Select tab | q: Quit",
         5 => "j/k: Scroll Logs | Tab: Switch focus | 1-5: Select tab | q: Quit",
@@ -91,6 +91,16 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             &app.new_input_url,
             app.input_cursor,
             &mut app.suggestions,
+        );
+    }
+
+    if app.is_adding_package {
+        popups::add_package::render(
+            frame,
+            &app.package_search_query,
+            &app.package_search_results,
+            app.is_searching_packages,
+            &mut app.package_search_state,
         );
     }
 }
