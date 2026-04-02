@@ -9,13 +9,15 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
     let title = match selected_index {
         2 | 4 => {
             let context_name = app
+                .domain
                 .nix_files
-                .get(app.selected_nix_file_index)
+                .get(app.ui.selected_nix_file_index)
                 .map(|f| f.name.as_str())
                 .unwrap_or("None");
             let config_path = app
+                .domain
                 .configurations
-                .get(app.selected_configuration_index)
+                .get(app.ui.selected_configuration_index)
                 .map(|c| c.path.as_str())
                 .unwrap_or("None");
             format!(" Content: {} / {} ", context_name, config_path)
@@ -44,7 +46,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
     match selected_index {
         1 => title::render(frame, inner_area),
         2 | 4 => packages::render(app, frame, inner_area),
-        3 => inputs::render(&app.inputs, frame, inner_area),
+        3 => inputs::render(&app.domain.inputs, frame, inner_area),
         _ => {
             let p = Paragraph::new("Select a box in the first column to view content.")
                 .alignment(Alignment::Center);

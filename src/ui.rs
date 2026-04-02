@@ -29,7 +29,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         ])
         .split(body_chunks[0]);
 
-    let col2_chunks = if app.selected_index == 5 {
+    let col2_chunks = if app.ui.selected_index == 5 {
         Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0)])
@@ -41,37 +41,42 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             .split(body_chunks[1])
     };
 
-    title::render(frame, col1_chunks[0], app.selected_index == 1);
-    context::render(app, frame, col1_chunks[1], app.selected_index == 2);
-    inputs::render(&app.inputs, frame, col1_chunks[2], app.selected_index == 3);
+    title::render(frame, col1_chunks[0], app.ui.selected_index == 1);
+    context::render(app, frame, col1_chunks[1], app.ui.selected_index == 2);
+    inputs::render(
+        &app.domain.inputs,
+        frame,
+        col1_chunks[2],
+        app.ui.selected_index == 3,
+    );
     configurations::render(
-        &app.configurations,
+        &app.domain.configurations,
         frame,
         col1_chunks[3],
-        app.selected_index == 4,
-        app.selected_configuration_index,
+        app.ui.selected_index == 4,
+        app.ui.selected_configuration_index,
     );
 
-    if app.selected_index != 5 {
-        content::render(app, frame, col2_chunks[0], app.selected_index);
+    if app.ui.selected_index != 5 {
+        content::render(app, frame, col2_chunks[0], app.ui.selected_index);
         command_log::render(
             frame,
             col2_chunks[1],
-            app.selected_index == 5,
-            &app.logs,
-            &mut app.command_log_state,
+            app.ui.selected_index == 5,
+            &app.domain.logs,
+            &mut app.ui.command_log_state,
         );
     } else {
         command_log::render(
             frame,
             col2_chunks[0],
-            app.selected_index == 5,
-            &app.logs,
-            &mut app.command_log_state,
+            app.ui.selected_index == 5,
+            &app.domain.logs,
+            &mut app.ui.command_log_state,
         );
     }
 
-    let footer_text = match app.selected_index {
+    let footer_text = match app.ui.selected_index {
         1 => "Tab: Switch focus | 1-5: Select tab | q: Quit",
         2 => "a: Add Package | j/k: Select File | Tab: Switch focus | 1-5: Select tab | q: Quit",
         3 => "a: Add Input | Tab: Switch focus | 1-5: Select tab | q: Quit",
@@ -80,34 +85,36 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         _ => "Press 'Tab' to switch focus, 'q' to quit",
     };
 
-    let footer = Paragraph::new(footer_text)
-        .block(Block::default().borders(Borders::NONE));
+    let footer = Paragraph::new(footer_text).block(Block::default().borders(Borders::NONE));
     frame.render_widget(footer, chunks[1]);
 
-    if app.is_adding_input {
+    if app.ui.is_adding_input {
         popups::add_input::render(
             frame,
-            &app.new_input_name,
-            &app.new_input_url,
-            app.input_cursor,
-            &mut app.suggestions,
+            &app.ui.new_input_name,
+            &app.ui.new_input_url,
+            app.ui.input_cursor,
+            &mut app.domain.suggestions,
         );
     }
 
-    if app.is_adding_package {
+    if app.ui.is_adding_package {
         popups::add_package::render(
             frame,
-            &app.package_search_query,
-            &app.package_search_results,
-            &app.searched_channels,
-            app.is_searching_packages,
-            &mut app.package_search_state,
+            &app.ui.package_search_query,
+            &app.domain.package_search_results,
+            &app.domain.searched_channels,
+            app.ui.is_searching_packages,
+            &mut app.ui.package_search_state,
         );
     }
 
-    if app.is_showing_package_details {
-        if let Some(result) = app.package_search_results.get(app.package_search_state.selected().unwrap_or(0)) {
-            popups::add_package::render_details(frame, result);
-        }
+    if app.ui.is_showing_package_details
+        && let Some(result) = app
+            .domain
+            .package_search_results
+            .get(app.ui.package_search_state.selected().unwrap_or(0))
+    {
+        popups::add_package::render_details(frame, result);
     }
 }

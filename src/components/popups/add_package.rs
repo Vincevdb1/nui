@@ -1,4 +1,4 @@
-use crate::app::SearchResult;
+use crate::state::SearchResult;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -61,9 +61,7 @@ pub fn render(
     };
 
     if results.is_empty() {
-        let block = Block::default()
-            .title(list_title)
-            .borders(Borders::ALL);
+        let block = Block::default().title(list_title).borders(Borders::ALL);
         frame.render_widget(block, chunks[2]);
 
         let area = chunks[2];
@@ -80,13 +78,20 @@ pub fn render(
         frame.render_widget(empty, vertical_chunks[1]);
     } else {
         // Calculate widths for each column
-        let max_name_width = results.iter().map(|res| res.name.len()).max().unwrap_or(0).max(10);
-        
+        let max_name_width = results
+            .iter()
+            .map(|res| res.name.len())
+            .max()
+            .unwrap_or(0)
+            .max(10);
+
         let mut max_version_widths = Vec::new();
         for channel in channels {
-            let max_w = results.iter()
+            let max_w = results
+                .iter()
                 .map(|res| {
-                    res.versions.iter()
+                    res.versions
+                        .iter()
                         .find(|v| v.channel == *channel)
                         .map(|v| v.version.len())
                         .unwrap_or(0)
@@ -99,18 +104,16 @@ pub fn render(
         let items: Vec<ListItem> = results
             .iter()
             .map(|res| {
-                let mut spans = vec![
-                    Span::styled(
-                        format!("  {:width$}", res.name, width = max_name_width),
-                        Style::default().add_modifier(Modifier::BOLD)
-                    ),
-                ];
+                let mut spans = vec![Span::styled(
+                    format!("  {:width$}", res.name, width = max_name_width),
+                    Style::default().add_modifier(Modifier::BOLD),
+                )];
 
                 for (i, channel) in channels.iter().enumerate() {
                     spans.push(Span::raw(" | "));
                     let version_opt = res.versions.iter().find(|v| v.channel == *channel);
                     let width = max_version_widths[i];
-                    
+
                     if let Some(v) = version_opt {
                         let color = get_channel_color(channel);
                         spans.push(Span::styled(
@@ -131,7 +134,10 @@ pub fn render(
                     } else {
                         res.description.to_string()
                     };
-                    spans.push(Span::styled(desc_trimmed, Style::default().fg(Color::DarkGray)));
+                    spans.push(Span::styled(
+                        desc_trimmed,
+                        Style::default().fg(Color::DarkGray),
+                    ));
                 }
 
                 ListItem::new(Line::from(spans))
@@ -139,11 +145,7 @@ pub fn render(
             .collect();
 
         let list = List::new(items)
-            .block(
-                Block::default()
-                    .title(list_title)
-                    .borders(Borders::ALL),
-            )
+            .block(Block::default().title(list_title).borders(Borders::ALL))
             .highlight_style(
                 Style::default()
                     .bg(Color::Cyan)
@@ -160,10 +162,7 @@ pub fn render(
     frame.render_widget(footer, chunks[3]);
 }
 
-pub fn render_details(
-    frame: &mut Frame,
-    result: &SearchResult,
-) {
+pub fn render_details(frame: &mut Frame, result: &SearchResult) {
     let area = centered_rect(60, 50, frame.area());
     frame.render_widget(Clear, area);
 
@@ -171,7 +170,7 @@ pub fn render_details(
         .title(format!(" [ {} Details ] ", result.name))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Magenta));
-    
+
     let inner_area = block.inner(area);
     frame.render_widget(block, area);
 
@@ -182,18 +181,22 @@ pub fn render_details(
     } else {
         let text_len = 11 + platforms_text.len(); // "Platforms: " is 11 chars
         let width = inner_area.width.saturating_sub(2) as usize; // Account for margins
-        if width == 0 { 1 } else { ((text_len + width - 1) / width) as u16 }
+        if width == 0 {
+            1
+        } else {
+            text_len.div_ceil(width) as u16
+        }
     };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(1), // Name
+            Constraint::Length(1),                                // Name
             Constraint::Length(result.versions.len() as u16 + 1), // Versions
-            Constraint::Length(platforms_height), // Platforms
-            Constraint::Min(0), // Description
-            Constraint::Length(1), // Footer
+            Constraint::Length(platforms_height),                 // Platforms
+            Constraint::Min(0),                                   // Description
+            Constraint::Length(1),                                // Footer
         ])
         .split(inner_area);
 
@@ -203,11 +206,14 @@ pub fn render_details(
             Span::styled("Attribute: ", Style::default().fg(Color::DarkGray)),
             Span::styled(&result.name, Style::default().add_modifier(Modifier::BOLD)),
         ])),
-        chunks[0]
+        chunks[0],
     );
 
     // Versions
-    let mut version_lines = vec![Line::from(Span::styled("Available Versions:", Style::default().fg(Color::DarkGray)))];
+    let mut version_lines = vec![Line::from(Span::styled(
+        "Available Versions:",
+        Style::default().fg(Color::DarkGray),
+    ))];
     for ver in &result.versions {
         let color = get_channel_color(&ver.channel);
         version_lines.push(Line::from(vec![
@@ -227,7 +233,7 @@ pub fn render_details(
                 Span::raw(platforms_text),
             ]))
             .wrap(ratatui::widgets::Wrap { trim: true }),
-            chunks[2]
+            chunks[2],
         );
     }
 
@@ -239,9 +245,13 @@ pub fn render_details(
     };
     frame.render_widget(
         Paragraph::new(desc)
-            .block(Block::default().title(" Description ").borders(Borders::TOP))
+            .block(
+                Block::default()
+                    .title(" Description ")
+                    .borders(Borders::TOP),
+            )
             .wrap(ratatui::widgets::Wrap { trim: true }),
-        chunks[3]
+        chunks[3],
     );
 
     // Footer
@@ -249,7 +259,7 @@ pub fn render_details(
         Paragraph::new("Press Tab, q, or Esc to close")
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center),
-        chunks[4]
+        chunks[4],
     );
 }
 
@@ -278,7 +288,7 @@ fn get_channel_color(channel: &str) -> Color {
     for c in channel.chars() {
         hash = hash.wrapping_mul(31).wrapping_add(c as u32);
     }
-    
+
     let colors = [
         Color::Red,
         Color::Green,

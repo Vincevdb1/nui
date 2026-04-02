@@ -1,0 +1,510 @@
+pub mod domain;
+pub mod ui;
+
+pub use domain::{ChannelVersion, DomainData, SearchResult};
+pub use ui::UiState;
+
+use crate::action::Action;
+use crate::context::find_nix_files;
+use crate::nix::flake::{extract_configurations, extract_inputs};
+use crate::nix::suggestions::Suggestions;
+use std::collections::HashMap;
+use std::sync::mpsc::{self, Receiver, Sender};
+
+pub struct AppState {
+    pub ui: UiState,
+    pub domain: DomainData,
+    pub should_quit: bool,
+
+    // Unified channel for background tasks
+    pub tx: Sender<Action>,
+    pub rx: Receiver<Action>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        let (tx, rx) = mpsc::channel();
+
+        crate::components::command_log::init_logger(tx.clone());
+        crate::command_log("Initializing NUI Application...");
+
+        let nix_files = find_nix_files();
+        crate::log_output("Filesystem", format!("Found {} nix files", nix_files.len()));
+
+        let (inputs, configurations) = if let Some(file) = nix_files.first() {
+            let flake_content = std::fs::read_to_string(&file.path).unwrap_or_default();
+            (
+                extract_inputs(&flake_content),
+                extract_configurations(&flake_content),
+            )
+        } else {
+            (Vec::new(), Vec::new())
+        };
+
+        let mut app = Self {
+            ui: UiState::default(),
+            domain: DomainData {
+                nix_files,
+                inputs,
+                configurations,
+                ..Default::default()
+            },
+            should_quit: false,
+            tx,
+            rx,
+        };
+
+        app.fetch_package_details();
+        app
+    }
+
+    pub fn update(&mut self, action: Action) {
+        match action {
+            Action::Tick => {
+                self.ui.throbber_state.calc_next();
+                self.process_background_results();
+
+                // Search throttle logic
+                if self.ui.is_adding_package
+                    && self.ui.last_search_time.elapsed() > std::time::Duration::from_millis(300)
+                    && self.ui.package_search_query != self.ui.last_search_query
+                {
+                    self.ui.last_search_query = self.ui.package_search_query.clone();
+                    if self.ui.package_search_query.is_empty() {
+                        self.domain.package_search_results.clear();
+                    } else if !self.ui.is_searching_packages {
+                        self.perform_package_search();
+                    }
+                }
+            }
+            Action::Quit => self.should_quit = true,
+            Action::NextTab => {
+                self.ui.selected_index = match self.ui.selected_index {
+                    1 => 2,
+                    2 => 3,
+                    3 => 4,
+                    4 => 5,
+                    5 => 1,
+                    _ => 1,
+                };
+            }
+            Action::PreviousTab => {
+                self.ui.selected_index = match self.ui.selected_index {
+                    1 => 5,
+                    2 => 1,
+                    3 => 2,
+                    4 => 3,
+                    5 => 4,
+                    _ => 1,
+                };
+            }
+            Action::SelectTab(index) => {
+                self.ui.selected_index = index;
+            }
+            Action::MoveDown => match self.ui.selected_index {
+                2 => {
+                    if !self.domain.nix_files.is_empty() {
+                        self.ui.selected_nix_file_index =
+                            (self.ui.selected_nix_file_index + 1) % self.domain.nix_files.len();
+                        self.update(Action::RefreshContext);
+                    }
+                }
+                4 => {
+                    if !self.domain.configurations.is_empty() {
+                        self.ui.selected_configuration_index =
+                            (self.ui.selected_configuration_index + 1)
+                                % self.domain.configurations.len();
+                        self.fetch_package_details();
+                    }
+                }
+                5 => {
+                    if !self.domain.logs.is_empty() {
+                        let total_lines =
+                            crate::components::command_log::count_lines(&self.domain.logs);
+                        let i = match self.ui.command_log_state.selected() {
+                            Some(i) => {
+                                if i >= total_lines - 1 {
+                                    i
+                                } else {
+                                    i + 1
+                                }
+                            }
+                            None => 0,
+                        };
+                        self.ui.command_log_state.select(Some(i));
+                    }
+                }
+                _ => {}
+            },
+            Action::MoveUp => match self.ui.selected_index {
+                2 => {
+                    if !self.domain.nix_files.is_empty() {
+                        self.ui.selected_nix_file_index = if self.ui.selected_nix_file_index == 0 {
+                            self.domain.nix_files.len() - 1
+                        } else {
+                            self.ui.selected_nix_file_index - 1
+                        };
+                        self.update(Action::RefreshContext);
+                    }
+                }
+                4 => {
+                    if !self.domain.configurations.is_empty() {
+                        self.ui.selected_configuration_index =
+                            if self.ui.selected_configuration_index == 0 {
+                                self.domain.configurations.len() - 1
+                            } else {
+                                self.ui.selected_configuration_index - 1
+                            };
+                        self.fetch_package_details();
+                    }
+                }
+                5 => {
+                    if !self.domain.logs.is_empty() {
+                        let i = match self.ui.command_log_state.selected() {
+                            Some(i) => {
+                                if i == 0 {
+                                    0
+                                } else {
+                                    i - 1
+                                }
+                            }
+                            None => 0,
+                        };
+                        self.ui.command_log_state.select(Some(i));
+                    }
+                }
+                _ => {}
+            },
+            Action::OpenAddPackage => {
+                self.ui.is_adding_package = true;
+                self.ui.package_search_query.clear();
+                self.domain.package_search_results.clear();
+            }
+            Action::OpenAddInput => {
+                self.ui.is_adding_input = true;
+                self.ui.new_input_name.clear();
+                self.ui.new_input_url.clear();
+                self.ui.input_cursor = 0;
+                self.start_fetching_suggestions();
+            }
+            Action::ClosePopup => {
+                self.ui.is_adding_package = false;
+                self.ui.is_adding_input = false;
+            }
+            Action::PackageSearchChar(c) => {
+                self.ui.package_search_query.push(c);
+            }
+            Action::PackageSearchBackspace => {
+                self.ui.package_search_query.pop();
+            }
+            Action::PackageSearchSubmit => {
+                // Add package logic
+            }
+            Action::TogglePackageDetails => {
+                self.ui.is_showing_package_details = !self.ui.is_showing_package_details;
+            }
+            Action::MoveSearchSelectionDown => {
+                let i = match self.ui.package_search_state.selected() {
+                    Some(i) => {
+                        if i >= self.domain.package_search_results.len().saturating_sub(1) {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.ui.package_search_state.select(Some(i));
+            }
+            Action::MoveSearchSelectionUp => {
+                let i = match self.ui.package_search_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            self.domain.package_search_results.len().saturating_sub(1)
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.ui.package_search_state.select(Some(i));
+            }
+            Action::InputPopupChar(c) => {
+                match self.ui.input_cursor {
+                    0 | 1 => self.ui.new_input_name.push(c),
+                    2 => self.ui.new_input_url.push(c),
+                    _ => {}
+                }
+                self.update_suggestions();
+            }
+            Action::InputPopupBackspace => {
+                match self.ui.input_cursor {
+                    0 | 1 => {
+                        self.ui.new_input_name.pop();
+                    }
+                    2 => {
+                        self.ui.new_input_url.pop();
+                    }
+                    _ => {}
+                }
+                self.update_suggestions();
+            }
+            Action::InputPopupSubmit => {
+                // Add input logic
+            }
+            Action::NextInputField => {
+                self.ui.input_cursor = (self.ui.input_cursor + 1) % 3;
+            }
+            Action::PreviousInputField => {
+                self.ui.input_cursor = if self.ui.input_cursor == 0 {
+                    2
+                } else {
+                    self.ui.input_cursor - 1
+                };
+            }
+            Action::MoveSuggestionDown => {
+                if !self.domain.suggestions.filtered.is_empty() {
+                    self.domain.suggestions.selected_index =
+                        (self.domain.suggestions.selected_index + 1)
+                            % self.domain.suggestions.filtered.len();
+                    self.domain
+                        .suggestions
+                        .list_state
+                        .select(Some(self.domain.suggestions.selected_index));
+                }
+            }
+            Action::MoveSuggestionUp => {
+                if !self.domain.suggestions.filtered.is_empty() {
+                    self.domain.suggestions.selected_index =
+                        if self.domain.suggestions.selected_index == 0 {
+                            self.domain.suggestions.filtered.len() - 1
+                        } else {
+                            self.domain.suggestions.selected_index - 1
+                        };
+                    self.domain
+                        .suggestions
+                        .list_state
+                        .select(Some(self.domain.suggestions.selected_index));
+                }
+            }
+            Action::Log(entry) => {
+                self.domain.logs.push(entry);
+                let total_lines = crate::components::command_log::count_lines(&self.domain.logs);
+                if total_lines > 0 {
+                    self.ui.command_log_state.select(Some(total_lines - 1));
+                }
+            }
+            Action::SetSuggestions(suggestions) => {
+                self.domain.suggestions.all = suggestions;
+                self.update_suggestions();
+                self.domain.suggestions.is_loading = false;
+            }
+            Action::SetPackageSearchResults(res) => {
+                self.ui.is_searching_packages = false;
+                match res {
+                    Ok(results) => {
+                        self.domain.package_search_results = results;
+                        if !self.domain.package_search_results.is_empty()
+                            && self.ui.package_search_state.selected().is_none()
+                        {
+                            self.ui.package_search_state.select(Some(0));
+                        }
+                    }
+                    Err(e) => {
+                        crate::log_output("Nix Error", format!("Error searching packages: {}", e));
+                    }
+                }
+            }
+            Action::SetPackageDetails(res) => {
+                self.ui.fetching_package_details = false;
+                self.domain.pending_fetches.clear();
+                match res {
+                    Ok(results) => {
+                        crate::log_output(
+                            "Nix Output",
+                            format!("Successfully fetched {} package details", results.len()),
+                        );
+                        self.ui.package_fetch_error = None;
+                        for (name, details) in results {
+                            self.domain.package_info.insert(name, details);
+                        }
+                    }
+                    Err(e) => {
+                        crate::log_output(
+                            "Nix Error",
+                            format!("Error fetching package details: {}", e),
+                        );
+                        self.ui.package_fetch_error = Some(e);
+                    }
+                }
+            }
+            Action::RefreshContext => {
+                if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
+                    let content = std::fs::read_to_string(&file.path).unwrap_or_default();
+                    self.domain.inputs = extract_inputs(&content);
+                    self.domain.configurations = extract_configurations(&content);
+                    if self.ui.selected_configuration_index >= self.domain.configurations.len() {
+                        self.ui.selected_configuration_index = 0;
+                    }
+                    self.fetch_package_details();
+                }
+            }
+            Action::FetchPackageDetails => {
+                self.fetch_package_details();
+            }
+        }
+    }
+
+    fn process_background_results(&mut self) {
+        while let Ok(action) = self.rx.try_recv() {
+            self.update(action);
+        }
+    }
+
+    fn fetch_package_details(&mut self) {
+        if let Some(config) = self
+            .domain
+            .configurations
+            .get(self.ui.selected_configuration_index)
+        {
+            let config_type = config.config_type.clone();
+            let config_name = config.path.clone();
+
+            crate::log_action(
+                format!("Fetching package details for {}", config_name),
+                format!("Config Type: {}", config_type),
+            );
+
+            let flake_path =
+                if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
+                    let parent = file.path.parent().unwrap_or(std::path::Path::new("."));
+                    let p = parent.to_string_lossy().to_string();
+                    if p.is_empty() || p == "." {
+                        ".".to_string()
+                    } else {
+                        format!("./{}", p)
+                    }
+                } else {
+                    ".".to_string()
+                };
+
+            self.ui.fetching_package_details = true;
+            self.ui.package_fetch_error = None;
+            self.domain.package_info.clear();
+            self.domain.pending_fetches.clear();
+
+            let tx = self.tx.clone();
+            std::thread::spawn(move || {
+                let res =
+                    crate::nix::Package::fetch_from_config(&flake_path, &config_type, &config_name);
+                let _ = tx.send(Action::SetPackageDetails(res));
+            });
+        }
+    }
+
+    fn perform_package_search(&mut self) {
+        if self.ui.package_search_query.is_empty() {
+            self.domain.package_search_results.clear();
+            return;
+        }
+
+        self.ui.is_searching_packages = true;
+        let query = self.ui.package_search_query.clone();
+        let tx = self.tx.clone();
+
+        // Extract channels from inputs
+        let mut channels: Vec<String> = self
+            .domain
+            .inputs
+            .iter()
+            .filter(|i| i.url.contains("nixpkgs"))
+            .map(|i| domain::extract_channel(&i.url))
+            .collect();
+
+        if channels.is_empty() {
+            channels.push("nixos-unstable".to_string());
+        }
+
+        channels.sort();
+        channels.dedup();
+        self.domain.searched_channels = channels.clone();
+
+        std::thread::spawn(move || {
+            let mut threads = Vec::new();
+            for channel in channels {
+                let q = query.clone();
+                let ch = channel.clone();
+                threads.push(std::thread::spawn(move || {
+                    let res = domain::nh_search(q, ch.clone());
+                    (ch, res)
+                }));
+            }
+
+            let mut results_map: HashMap<String, SearchResult> = HashMap::new();
+            for t in threads {
+                if let Ok((channel, Ok(packages))) = t.join() {
+                    for p in packages {
+                        let entry = results_map.entry(p.attribute.clone()).or_insert_with(|| {
+                            SearchResult {
+                                name: p.attribute.clone(),
+                                description: String::new(),
+                                versions: Vec::new(),
+                                platforms: Vec::new(),
+                            }
+                        });
+
+                        let old_is_unstable = entry
+                            .versions
+                            .iter()
+                            .any(|v| v.channel.contains("unstable"));
+                        let new_is_unstable = channel.contains("unstable");
+
+                        let desc = p.description.clone().unwrap_or_default();
+                        if entry.description.is_empty()
+                            || (new_is_unstable && !old_is_unstable)
+                            || desc.len() > entry.description.len()
+                        {
+                            entry.description = desc;
+                        }
+
+                        if let Some(platforms) = p.platforms {
+                            for plat in platforms {
+                                if !entry.platforms.contains(&plat) {
+                                    entry.platforms.push(plat);
+                                }
+                            }
+                            entry.platforms.sort();
+                        }
+
+                        entry.versions.push(ChannelVersion {
+                            version: p.version.unwrap_or_else(|| "Unknown".to_string()),
+                            channel: channel.clone(),
+                        });
+                    }
+                }
+            }
+
+            let mut final_results: Vec<SearchResult> = results_map.into_values().collect();
+            final_results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            let _ = tx.send(Action::SetPackageSearchResults(Ok(final_results)));
+        });
+    }
+
+    fn start_fetching_suggestions(&mut self) {
+        self.domain.suggestions.is_loading = true;
+        Suggestions::fetch_branches(self.tx.clone());
+    }
+
+    fn update_suggestions(&mut self) {
+        let existing_urls: Vec<String> = self.domain.inputs.iter().map(|i| i.url.clone()).collect();
+        self.domain
+            .suggestions
+            .update_filtered(&self.ui.new_input_name, &existing_urls);
+    }
+}

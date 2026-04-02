@@ -37,8 +37,11 @@ impl Suggestions {
         });
     }
 
-    pub fn fetch_branches(tx: std::sync::mpsc::Sender<Vec<(String, String)>>) {
-        crate::log_action("Fetching nixpkgs branches", "GET https://api.github.com/repos/nixos/nixpkgs/branches");
+    pub fn fetch_branches(tx: std::sync::mpsc::Sender<crate::action::Action>) {
+        crate::log_action(
+            "Fetching nixpkgs branches",
+            "GET https://api.github.com/repos/nixos/nixpkgs/branches",
+        );
         std::thread::spawn(move || {
             let client = reqwest::blocking::Client::builder()
                 .user_agent("nui-tui-app")
@@ -81,17 +84,33 @@ impl Suggestions {
                                     }
                                 });
 
-                                crate::log_output("GitHub Output", format!("Successfully fetched {} branches", sorted_branches.len()));
-                                let _ = tx.send(sorted_branches);
+                                crate::log_output(
+                                    "GitHub Output",
+                                    format!(
+                                        "Successfully fetched {} branches",
+                                        sorted_branches.len()
+                                    ),
+                                );
+                                let _ =
+                                    tx.send(crate::action::Action::SetSuggestions(sorted_branches));
                             } else {
-                                crate::log_output("GitHub Error", "Failed to parse GitHub API response for branches");
+                                crate::log_output(
+                                    "GitHub Error",
+                                    "Failed to parse GitHub API response for branches",
+                                );
                             }
                         } else {
-                            crate::log_output("GitHub Error", format!("GitHub API error: {}", response.status()));
+                            crate::log_output(
+                                "GitHub Error",
+                                format!("GitHub API error: {}", response.status()),
+                            );
                         }
                     }
                     Err(e) => {
-                        crate::log_output("GitHub Error", format!("Failed to fetch branches: {}", e));
+                        crate::log_output(
+                            "GitHub Error",
+                            format!("Failed to fetch branches: {}", e),
+                        );
                     }
                 }
             }

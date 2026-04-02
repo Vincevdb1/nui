@@ -7,17 +7,17 @@ pub fn extract_inputs(content: &str) -> Vec<Input> {
 
     if let Ok(collection) = nix_editor::parse::get_collection(content.to_string()) {
         for (key, val) in collection {
-            if let Some(rest) = key.strip_prefix("inputs.") {
-                if let Some(name) = rest.strip_suffix(".url") {
-                    let url = val.trim_matches('"').to_string();
-                    inputs.insert(
-                        name.to_string(),
-                        Input {
-                            name: name.to_string(),
-                            url,
-                        },
-                    );
-                }
+            if let Some(rest) = key.strip_prefix("inputs.")
+                && let Some(name) = rest.strip_suffix(".url")
+            {
+                let url = val.trim_matches('"').to_string();
+                inputs.insert(
+                    name.to_string(),
+                    Input {
+                        name: name.to_string(),
+                        url,
+                    },
+                );
             }
         }
     }
@@ -98,6 +98,7 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
     configs
 }
 
+#[allow(dead_code)]
 pub fn add_input(content: &str, name: &str, url: &str) -> String {
     let name = name.replace('.', "-");
     let ast = Root::parse(content);
@@ -109,63 +110,62 @@ pub fn add_input(content: &str, name: &str, url: &str) -> String {
                 c.kind() == SyntaxKind::NODE_ATTRPATH && c.text().to_string().trim() == "inputs"
             });
 
-            if has_inputs_path {
-                if let Some(set_node) = node
+            if has_inputs_path
+                && let Some(set_node) = node
                     .children()
                     .find(|c| c.kind() == SyntaxKind::NODE_ATTR_SET)
-                {
-                    let mut close_brace_opt = None;
-                    for child in set_node.children_with_tokens() {
-                        if let Some(token) = child.as_token() {
-                            if token.text() == "}" {
-                                close_brace_opt = Some(token.clone());
-                            }
-                        }
+            {
+                let mut close_brace_opt = None;
+                for child in set_node.children_with_tokens() {
+                    if let Some(token) = child.as_token()
+                        && token.text() == "}"
+                    {
+                        close_brace_opt = Some(token.clone());
                     }
+                }
 
-                    if let Some(close_brace) = close_brace_opt {
-                        let mut item_indent = "    ".to_string();
-                        for child in set_node.children() {
-                            if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
-                                if let Some(prev) = child.prev_sibling_or_token() {
-                                    if prev.kind() == SyntaxKind::TOKEN_WHITESPACE {
-                                        let ws = prev.to_string();
-                                        if let Some(last_line) = ws.lines().last() {
-                                            item_indent = last_line.to_string();
-                                        }
-                                    }
+                if let Some(close_brace) = close_brace_opt {
+                    let mut item_indent = "    ".to_string();
+                    for child in set_node.children() {
+                        if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                            if let Some(prev) = child.prev_sibling_or_token()
+                                && prev.kind() == SyntaxKind::TOKEN_WHITESPACE
+                            {
+                                let ws = prev.to_string();
+                                if let Some(last_line) = ws.lines().last() {
+                                    item_indent = last_line.to_string();
                                 }
-                                break;
                             }
+                            break;
                         }
-
-                        let mut ws_before_brace = String::new();
-                        let mut start_of_replacement = close_brace.text_range().start();
-                        if let Some(prev) = close_brace.prev_sibling_or_token() {
-                            if prev.kind() == SyntaxKind::TOKEN_WHITESPACE {
-                                ws_before_brace = prev.to_string();
-                                start_of_replacement = prev.text_range().start();
-                            }
-                        }
-
-                        let closing_brace_indent =
-                            if let Some(last_line) = ws_before_brace.lines().last() {
-                                last_line.to_string()
-                            } else {
-                                "".to_string()
-                            };
-
-                        let new_entry = format!(
-                            "\n{}{}.url = \"{}\";\n{}}}",
-                            item_indent, name, url, closing_brace_indent
-                        );
-
-                        let mut result = content.to_string();
-                        let start: usize = start_of_replacement.into();
-                        let end: usize = close_brace.text_range().end().into();
-                        result.replace_range(start..end, &new_entry);
-                        return result;
                     }
+
+                    let mut ws_before_brace = String::new();
+                    let mut start_of_replacement = close_brace.text_range().start();
+                    if let Some(prev) = close_brace.prev_sibling_or_token()
+                        && prev.kind() == SyntaxKind::TOKEN_WHITESPACE
+                    {
+                        ws_before_brace = prev.to_string();
+                        start_of_replacement = prev.text_range().start();
+                    }
+
+                    let closing_brace_indent =
+                        if let Some(last_line) = ws_before_brace.lines().last() {
+                            last_line.to_string()
+                        } else {
+                            "".to_string()
+                        };
+
+                    let new_entry = format!(
+                        "\n{}{}.url = \"{}\";\n{}}}",
+                        item_indent, name, url, closing_brace_indent
+                    );
+
+                    let mut result = content.to_string();
+                    let start: usize = start_of_replacement.into();
+                    let end: usize = close_brace.text_range().end().into();
+                    result.replace_range(start..end, &new_entry);
+                    return result;
                 }
             }
         }

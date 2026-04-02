@@ -1,12 +1,15 @@
+pub mod action;
 mod app;
 pub mod components;
 mod context;
 mod nix;
+pub mod state;
 mod tui;
 mod ui;
 
 pub use components::command_log::{command_log, log_action, log_output};
 
+use crate::action::Action;
 use crate::app::App;
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode};
@@ -26,274 +29,96 @@ fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<()> {
     while !app.should_quit {
         terminal.draw(|frame| ui::render(app, frame))?;
 
-        if event::poll(std::time::Duration::from_millis(16))? {
-            handle_events(app, event::read()?)?;
+        if event::poll(std::time::Duration::from_millis(16))?
+            && let Some(action) = map_event(app, event::read()?)
+        {
+            app.update(action);
         }
-        app.tick();
+        app.update(Action::Tick);
     }
     Ok(())
 }
 
-fn handle_events(app: &mut App, event: Event) -> Result<()> {
+fn map_event(app: &App, event: Event) -> Option<Action> {
     if let Event::Key(key) = event {
-        if app.is_adding_package {
-            if app.is_showing_package_details {
-                match key.code {
+        if app.ui.is_adding_package {
+            if app.ui.is_showing_package_details {
+                return match key.code {
                     KeyCode::Esc | KeyCode::Char('q') | KeyCode::Tab => {
-                        app.is_showing_package_details = false;
+                        Some(Action::TogglePackageDetails)
                     }
-                    _ => {}
-                }
-                return Ok(());
+                    _ => None,
+                };
             }
 
-            match key.code {
-                KeyCode::Esc => {
-                    app.is_adding_package = false;
-                    app.package_search_query.clear();
-                    app.package_search_results.clear();
-                }
-                KeyCode::Char('q') => {
-                    app.is_adding_package = false;
-                    app.package_search_query.clear();
-                    app.package_search_results.clear();
-                }
+            return match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => Some(Action::ClosePopup),
                 KeyCode::Tab => {
-                    if !app.package_search_results.is_empty() {
-                        app.is_showing_package_details = true;
+                    if !app.domain.package_search_results.is_empty() {
+                        Some(Action::TogglePackageDetails)
+                    } else {
+                        None
                     }
                 }
                 KeyCode::Char('j') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
-                    if !app.package_search_results.is_empty() {
-                        let i = (app.package_search_state.selected().unwrap_or(0) + 1) % app.package_search_results.len();
-                        app.package_search_state.select(Some(i));
-                    }
+                    Some(Action::MoveSearchSelectionDown)
                 }
                 KeyCode::Char('k') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
-                    if !app.package_search_results.is_empty() {
-                        let i = if app.package_search_state.selected().unwrap_or(0) == 0 {
-                            app.package_search_results.len() - 1
-                        } else {
-                            app.package_search_state.selected().unwrap() - 1
-                        };
-                        app.package_search_state.select(Some(i));
-                    }
+                    Some(Action::MoveSearchSelectionUp)
                 }
-                KeyCode::Down => {
-                    if !app.package_search_results.is_empty() {
-                        let i = (app.package_search_state.selected().unwrap_or(0) + 1) % app.package_search_results.len();
-                        app.package_search_state.select(Some(i));
-                    }
-                }
-                KeyCode::Up => {
-                    if !app.package_search_results.is_empty() {
-                        let i = if app.package_search_state.selected().unwrap_or(0) == 0 {
-                            app.package_search_results.len() - 1
-                        } else {
-                            app.package_search_state.selected().unwrap() - 1
-                        };
-                        app.package_search_state.select(Some(i));
-                    }
-                }
-                KeyCode::Backspace => {
-                    app.package_search_query.pop();
-                    app.last_search_time = std::time::Instant::now();
-                }
-                KeyCode::Enter => {
-                    app.add_package();
-                }
-                KeyCode::Char(c) => {
-                    app.package_search_query.push(c);
-                    app.last_search_time = std::time::Instant::now();
-                }
-                _ => {}
-            }
-            return Ok(());
+                KeyCode::Down => Some(Action::MoveSearchSelectionDown),
+                KeyCode::Up => Some(Action::MoveSearchSelectionUp),
+                KeyCode::Backspace => Some(Action::PackageSearchBackspace),
+                KeyCode::Enter => Some(Action::PackageSearchSubmit),
+                KeyCode::Char(c) => Some(Action::PackageSearchChar(c)),
+                _ => None,
+            };
         }
 
-        if app.is_adding_input {
-            match key.code {
-                KeyCode::Esc | KeyCode::Char('q') if app.input_cursor == 0 => {
-                    app.is_adding_input = false;
-                    app.new_input_name.clear();
-                    app.new_input_url.clear();
-                    app.input_cursor = 0;
+        if app.ui.is_adding_input {
+            return match key.code {
+                KeyCode::Esc | KeyCode::Char('q') if app.ui.input_cursor == 0 => {
+                    Some(Action::ClosePopup)
                 }
-                KeyCode::Esc => {
-                    app.is_adding_input = false;
-                    app.new_input_name.clear();
-                    app.new_input_url.clear();
-                    app.input_cursor = 0;
-                }
-                KeyCode::Tab => {
-                    app.input_cursor = (app.input_cursor + 1) % 3;
-                }
-                KeyCode::BackTab => {
-                    app.input_cursor = if app.input_cursor == 0 {
-                        2
-                    } else {
-                        app.input_cursor - 1
-                    };
-                }
+                KeyCode::Esc => Some(Action::ClosePopup),
+                KeyCode::Tab => Some(Action::NextInputField),
+                KeyCode::BackTab => Some(Action::PreviousInputField),
                 KeyCode::Down | KeyCode::Char('j') => {
-                    if app.input_cursor == 0 {
-                        if !app.suggestions.filtered.is_empty() {
-                            app.suggestions.selected_index = (app.suggestions.selected_index + 1)
-                                % app.suggestions.filtered.len();
-                            app.suggestions
-                                .list_state
-                                .select(Some(app.suggestions.selected_index));
-                        }
+                    if app.ui.input_cursor == 0 {
+                        Some(Action::MoveSuggestionDown)
                     } else {
-                        app.input_cursor = (app.input_cursor + 1) % 3;
+                        Some(Action::NextInputField)
                     }
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
-                    if app.input_cursor == 0 {
-                        if !app.suggestions.filtered.is_empty() {
-                            app.suggestions.selected_index = if app.suggestions.selected_index == 0
-                            {
-                                app.suggestions.filtered.len() - 1
-                            } else {
-                                app.suggestions.selected_index - 1
-                            };
-                            app.suggestions
-                                .list_state
-                                .select(Some(app.suggestions.selected_index));
-                        }
+                    if app.ui.input_cursor == 0 {
+                        Some(Action::MoveSuggestionUp)
                     } else {
-                        app.input_cursor = if app.input_cursor == 0 {
-                            2
-                        } else {
-                            app.input_cursor - 1
-                        };
+                        Some(Action::PreviousInputField)
                     }
                 }
-                KeyCode::Char(c) => {
-                    if app.input_cursor == 1 {
-                        app.new_input_name.push(c);
-                        app.update_suggestions();
-                    } else if app.input_cursor == 2 {
-                        app.new_input_url.push(c);
-                    }
-                }
-                KeyCode::Backspace => {
-                    if app.input_cursor == 1 {
-                        app.new_input_name.pop();
-                        app.update_suggestions();
-                    } else if app.input_cursor == 2 {
-                        app.new_input_url.pop();
-                    }
-                }
-                KeyCode::Enter => {
-                    if app.input_cursor == 0 {
-                        if !app.suggestions.filtered.is_empty() {
-                            let (name, url) =
-                                &app.suggestions.filtered[app.suggestions.selected_index];
-                            app.new_input_name = name.clone();
-                            app.new_input_url = url.clone();
-                            app.add_input();
-                        }
-                    } else if !app.new_input_name.is_empty() && !app.new_input_url.is_empty() {
-                        app.add_input();
-                    }
-                }
-                _ => {}
-            }
-            return Ok(());
+                KeyCode::Char(c) => Some(Action::InputPopupChar(c)),
+                KeyCode::Backspace => Some(Action::InputPopupBackspace),
+                KeyCode::Enter => Some(Action::InputPopupSubmit),
+                _ => None,
+            };
         }
 
-        match key.code {
-            KeyCode::Char('q') => app.quit(),
-            KeyCode::Tab => app.next_tab(),
-            KeyCode::BackTab => app.previous_tab(),
-            KeyCode::Char('1') => app.selected_index = 1,
-            KeyCode::Char('2') => app.selected_index = 2,
-            KeyCode::Char('3') => app.selected_index = 3,
-            KeyCode::Char('4') => app.selected_index = 4,
-            KeyCode::Char('5') => app.selected_index = 5,
-            KeyCode::Char('a') if app.selected_index == 2 => {
-                app.is_adding_package = true;
-                app.package_search_query.clear();
-                app.last_search_query.clear();
-                app.package_search_results.clear();
-            }
-            KeyCode::Char('a') if app.selected_index == 3 => {
-                app.is_adding_input = true;
-                app.new_input_name.clear();
-                app.new_input_url.clear();
-                app.input_cursor = 0;
-                app.update_suggestions();
-                app.start_fetching();
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if app.selected_index == 2 {
-                    if !app.nix_files.is_empty() {
-                        app.selected_nix_file_index =
-                            (app.selected_nix_file_index + 1) % app.nix_files.len();
-                        app.update_context();
-                    }
-                } else if app.selected_index == 4 {
-                    if !app.configurations.is_empty() {
-                        app.selected_configuration_index =
-                            (app.selected_configuration_index + 1) % app.configurations.len();
-                        app.fetch_package_details_from_config();
-                    }
-                } else if app.selected_index == 5 {
-                    if !app.logs.is_empty() {
-                        let total_lines = crate::components::command_log::count_lines(&app.logs);
-                        let i = match app.command_log_state.selected() {
-                            Some(i) => {
-                                if i >= total_lines - 1 {
-                                    i
-                                } else {
-                                    i + 1
-                                }
-                            }
-                            None => 0,
-                        };
-                        app.command_log_state.select(Some(i));
-                    }
-                }
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                if app.selected_index == 2 {
-                    if !app.nix_files.is_empty() {
-                        app.selected_nix_file_index = if app.selected_nix_file_index == 0 {
-                            app.nix_files.len() - 1
-                        } else {
-                            app.selected_nix_file_index - 1
-                        };
-                        app.update_context();
-                    }
-                } else if app.selected_index == 4 {
-                    if !app.configurations.is_empty() {
-                        app.selected_configuration_index = if app.selected_configuration_index == 0
-                        {
-                            app.configurations.len() - 1
-                        } else {
-                            app.selected_configuration_index - 1
-                        };
-                        app.fetch_package_details_from_config();
-                    }
-                } else if app.selected_index == 5 {
-                    if !app.logs.is_empty() {
-                        let i = match app.command_log_state.selected() {
-                            Some(i) => {
-                                if i == 0 {
-                                    0
-                                } else {
-                                    i - 1
-                                }
-                            }
-                            None => 0,
-                        };
-                        app.command_log_state.select(Some(i));
-                    }
-                }
-            }
-            _ => {}
-        }
+        return match key.code {
+            KeyCode::Char('q') => Some(Action::Quit),
+            KeyCode::Tab => Some(Action::NextTab),
+            KeyCode::BackTab => Some(Action::PreviousTab),
+            KeyCode::Char('1') => Some(Action::SelectTab(1)),
+            KeyCode::Char('2') => Some(Action::SelectTab(2)),
+            KeyCode::Char('3') => Some(Action::SelectTab(3)),
+            KeyCode::Char('4') => Some(Action::SelectTab(4)),
+            KeyCode::Char('5') => Some(Action::SelectTab(5)),
+            KeyCode::Char('a') if app.ui.selected_index == 2 => Some(Action::OpenAddPackage),
+            KeyCode::Char('a') if app.ui.selected_index == 3 => Some(Action::OpenAddInput),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveDown),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveUp),
+            _ => None,
+        };
     }
-    Ok(())
+    None
 }

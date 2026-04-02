@@ -1,29 +1,24 @@
+use crate::action::Action;
 use ratatui::{prelude::*, widgets::*};
 use std::sync::OnceLock;
 use std::sync::mpsc::Sender;
 
 #[derive(Clone, Debug)]
 pub enum LogEntry {
-    Action {
-        action: String,
-        command: String,
-    },
-    Output {
-        header: String,
-        message: String,
-    },
+    Action { action: String, command: String },
+    Output { header: String, message: String },
     Info(String),
 }
 
-static LOG_SENDER: OnceLock<Sender<LogEntry>> = OnceLock::new();
+static LOG_SENDER: OnceLock<Sender<Action>> = OnceLock::new();
 
-pub fn init_logger(tx: Sender<LogEntry>) {
+pub fn init_logger(tx: Sender<Action>) {
     let _ = LOG_SENDER.set(tx);
 }
 
 pub fn command_log(msg: impl Into<LogEntry>) {
     if let Some(tx) = LOG_SENDER.get() {
-        let _ = tx.send(msg.into());
+        let _ = tx.send(Action::Log(msg.into()));
     }
 }
 
@@ -67,7 +62,13 @@ pub fn count_lines(logs: &[LogEntry]) -> usize {
     count
 }
 
-pub fn render(frame: &mut Frame, area: Rect, is_selected: bool, logs: &[LogEntry], state: &mut ListState) {
+pub fn render(
+    frame: &mut Frame,
+    area: Rect,
+    is_selected: bool,
+    logs: &[LogEntry],
+    state: &mut ListState,
+) {
     let block = Block::default()
         .title(" [5] Command Log ")
         .borders(Borders::ALL)
@@ -83,32 +84,44 @@ pub fn render(frame: &mut Frame, area: Rect, is_selected: bool, logs: &[LogEntry
     for log in logs {
         match log {
             LogEntry::Action { action, command } => {
-                list_items.push(ListItem::new(Line::from(vec![
-                    Span::styled(action.as_str(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                ])));
-                list_items.push(ListItem::new(Line::from(vec![
-                    Span::raw(format!("  {}", command)),
-                ])));
+                list_items.push(ListItem::new(Line::from(vec![Span::styled(
+                    action.as_str(),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )])));
+                list_items.push(ListItem::new(Line::from(vec![Span::raw(format!(
+                    "  {}",
+                    command
+                ))])));
                 list_items.push(ListItem::new(Line::from("")));
             }
             LogEntry::Output { header, message } => {
-                list_items.push(ListItem::new(Line::from(vec![
-                    Span::styled(header.as_str(), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-                ])));
+                list_items.push(ListItem::new(Line::from(vec![Span::styled(
+                    header.as_str(),
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
+                )])));
                 for line in message.lines() {
-                    list_items.push(ListItem::new(Line::from(vec![
-                        Span::raw(format!("  {}", line)),
-                    ])));
+                    list_items.push(ListItem::new(Line::from(vec![Span::raw(format!(
+                        "  {}",
+                        line
+                    ))])));
                 }
                 list_items.push(ListItem::new(Line::from("")));
             }
             LogEntry::Info(msg) => {
-                list_items.push(ListItem::new(Line::from(vec![
-                    Span::styled("Info", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),
-                ])));
-                list_items.push(ListItem::new(Line::from(vec![
-                    Span::raw(format!("  {}", msg)),
-                ])));
+                list_items.push(ListItem::new(Line::from(vec![Span::styled(
+                    "Info",
+                    Style::default()
+                        .fg(Color::Blue)
+                        .add_modifier(Modifier::BOLD),
+                )])));
+                list_items.push(ListItem::new(Line::from(vec![Span::raw(format!(
+                    "  {}",
+                    msg
+                ))])));
                 list_items.push(ListItem::new(Line::from("")));
             }
         }
@@ -116,8 +129,7 @@ pub fn render(frame: &mut Frame, area: Rect, is_selected: bool, logs: &[LogEntry
 
     let list = List::new(list_items)
         .block(block)
-        .highlight_style(Style::default())
-        ;
-    
+        .highlight_style(Style::default());
+
     frame.render_stateful_widget(list, area, state);
 }

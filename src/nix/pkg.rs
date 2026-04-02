@@ -10,9 +10,13 @@ pub struct Package {
 }
 
 impl Package {
-    pub fn fetch_from_config(flake_path: &str, config_type: &str, config_name: &str) -> Result<HashMap<String, (String, String)>, String> {
+    pub fn fetch_from_config(
+        flake_path: &str,
+        config_type: &str,
+        config_name: &str,
+    ) -> Result<HashMap<String, (String, String)>, String> {
         let mut results = HashMap::new();
-        
+
         let target_attr = if config_type == "devShells" {
             let parts: Vec<&str> = config_name.split('.').collect();
             if parts.len() == 2 {
@@ -20,23 +24,28 @@ impl Package {
             } else {
                 format!("{}.\"{}\"", config_type, config_name)
             }
-        } else if matches!(config_type, "nixosConfigurations" | "homeConfigurations" | "darwinConfigurations") {
+        } else if matches!(
+            config_type,
+            "nixosConfigurations" | "homeConfigurations" | "darwinConfigurations"
+        ) {
             format!("{}.\"{}\"", config_type, config_name)
         } else {
             return Ok(results);
         };
 
         let extract_logic = match config_type {
-            "nixosConfigurations" | "darwinConfigurations" => 
-                "extractList (t.config.environment.systemPackages or [])",
-            "homeConfigurations" => 
-                "extractList (t.config.home.packages or (t.home.packages or []))",
-            "devShells" => 
-                "extractList (t.buildInputs or [])",
-            _ => "extractList (if builtins.isList l then l else [])"
+            "nixosConfigurations" | "darwinConfigurations" => {
+                "extractList (t.config.environment.systemPackages or [])"
+            }
+            "homeConfigurations" => {
+                "extractList (t.config.home.packages or (t.home.packages or []))"
+            }
+            "devShells" => "extractList (t.buildInputs or [])",
+            _ => "extractList (if builtins.isList l then l else [])",
         };
 
-        let apply_expr = format!(r#"p: let
+        let apply_expr = format!(
+            r#"p: let
           getPkgInfo = p: let 
             tried = builtins.tryEval p;
           in if tried.success && (p ? pname || p ? name) then {{
@@ -47,15 +56,17 @@ impl Package {
           }} else null;
           extractList = l: if builtins.isList l then builtins.filter (x: x != null) (map getPkgInfo l) else [];
           extract = t: {};
-        in extract p"#, extract_logic);
+        in extract p"#,
+            extract_logic
+        );
 
         let attr_path = format!("{}#{}", flake_path, target_attr);
-        
+
         crate::log_action(
             "Evaluating nix expressions",
-            format!("nix eval {}", attr_path)
+            format!("nix eval {}", attr_path),
         );
-        
+
         let mut command = Command::new("nix");
         command.args([
             "eval",
@@ -86,7 +97,10 @@ impl Package {
                     };
                     results.insert(key, (pkg.description, pkg.version));
                 }
-                crate::log_output("Nix Output", format!("Successfully evaluated {} packages", count));
+                crate::log_output(
+                    "Nix Output",
+                    format!("Successfully evaluated {} packages", count),
+                );
                 Ok(results)
             } else {
                 crate::log_output("Nix Error", "Failed to parse nix eval output");

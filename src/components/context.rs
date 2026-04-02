@@ -13,11 +13,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, is_selected: bool) {
         });
 
     let items: Vec<ListItem> = app
+        .domain
         .nix_files
         .iter()
         .enumerate()
         .map(|(i, nix_file)| {
-            let style = if i == app.selected_nix_file_index {
+            let style = if i == app.ui.selected_nix_file_index {
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD)

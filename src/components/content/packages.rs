@@ -5,7 +5,7 @@ use throbber_widgets_tui::Throbber;
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let mut all_packages = Vec::new();
 
-    for (name, (description, version)) in &app.package_info {
+    for (name, (description, version)) in &app.domain.package_info {
         all_packages.push(crate::nix::Package {
             name: name.clone(),
             description: description.clone(),
@@ -16,7 +16,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     all_packages.sort_by(|a, b| a.name.cmp(&b.name));
 
     if all_packages.is_empty() {
-        if app.fetching_package_details {
+        if app.ui.fetching_package_details {
             let vertical_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -37,12 +37,16 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
                     Constraint::Fill(1),
                 ])
                 .split(vertical_chunks[1]);
-            
+
             let throbber = Throbber::default()
                 .label(label)
                 .throbber_set(throbber_widgets_tui::BRAILLE_SIX_DOUBLE);
-            
-            frame.render_stateful_widget(throbber, horizontal_chunks[1], &mut app.throbber_state);
+
+            frame.render_stateful_widget(
+                throbber,
+                horizontal_chunks[1],
+                &mut app.ui.throbber_state,
+            );
         } else {
             let p = Paragraph::new("No packages found in selected configuration.")
                 .alignment(Alignment::Center);
