@@ -99,8 +99,15 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             frame,
             &app.package_search_query,
             &app.package_search_results,
+            &app.searched_channels,
             app.is_searching_packages,
             &mut app.package_search_state,
         );
+    }
+
+    if app.is_showing_package_details {
+        if let Some(result) = app.package_search_results.get(app.package_search_state.selected().unwrap_or(0)) {
+            popups::add_package::render_details(frame, result);
+        }
     }
 }

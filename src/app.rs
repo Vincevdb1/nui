@@ -6,8 +6,70 @@ use crate::nix::{
 };
 use crate::components::command_log::LogEntry;
 use ratatui::widgets::ListState;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
+
+#[derive(Debug, Deserialize)]
+pub struct NHPackage {
+    #[serde(rename = "package_attr_name")]
+    pub attribute: String,
+    #[serde(rename = "package_pname")]
+    #[allow(dead_code)]
+    pub pname: Option<String>,
+    #[serde(rename = "package_pversion")]
+    pub version: Option<String>,
+    #[serde(rename = "package_description")]
+    pub description: Option<String>,
+    #[serde(rename = "package_platforms")]
+    pub platforms: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelVersion {
+    pub version: String,
+    pub channel: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub name: String,
+    pub description: String,
+    pub versions: Vec<ChannelVersion>,
+    pub platforms: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NHSearchResponse {
+    results: Vec<NHPackage>,
+}
+
+pub fn nh_search(query: String, channel: String) -> Result<Vec<NHPackage>, String> {
+    let output = std::process::Command::new("nh")
+        .args(["search", "--json", "--platforms", "--channel", &channel, &query])
+        .output()
+        .map_err(|e| format!("Failed to execute nh: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!("nh search failed with status: {}", output.status));
+    }
+
+    let response: NHSearchResponse = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse nh output: {}", e))?;
+
+    Ok(response.results)
+}
+
+fn extract_channel(url: &str) -> String {
+    if url.contains("nixpkgs") {
+        for part in url.split('/') {
+            if part.starts_with("nixos-") || part.starts_with("nixpkgs-") {
+                return part.strip_suffix(".tar.gz").unwrap_or(part).to_string();
+            }
+        }
+    }
+    "nixos-unstable".to_string()
+}
 
 pub struct App {
     pub should_quit: bool,
@@ -25,13 +87,15 @@ pub struct App {
     pub is_adding_package: bool,
     pub package_search_query: String,
     pub last_search_query: String,
-    pub package_search_results: Vec<(String, String)>,
+    pub package_search_results: Vec<SearchResult>,
     pub package_search_state: ListState,
     pub is_searching_packages: bool,
+    pub is_showing_package_details: bool,
+    pub searched_channels: Vec<String>,
     pub package_index: HashMap<String, Vec<String>>,
     pub last_search_time: std::time::Instant,
-    pub pkg_search_tx: Sender<Result<Vec<(String, String)>, String>>,
-    pub pkg_search_rx: Receiver<Result<Vec<(String, String)>, String>>,
+    pub pkg_search_tx: Sender<Result<Vec<SearchResult>, String>>,
+    pub pkg_search_rx: Receiver<Result<Vec<SearchResult>, String>>,
     pub new_input_name: String,
     pub new_input_url: String,
     pub input_cursor: usize, // 0 for common inputs, 1 for name, 2 for url
@@ -85,6 +149,8 @@ impl App {
             package_search_results: Vec::new(),
             package_search_state: ListState::default(),
             is_searching_packages: false,
+            is_showing_package_details: false,
+            searched_channels: Vec::new(),
             package_index: HashMap::new(),
             last_search_time: std::time::Instant::now(),
             new_input_name: String::new(),
@@ -294,121 +360,98 @@ impl App {
             return;
         }
 
-        // 1. Check local index first for instant results
-        let flake = self.inputs.iter()
-            .find(|i| i.name == "nixpkgs")
-            .map(|i| i.name.as_str())
-            .unwrap_or(".");
-
-        if let Some(names) = self.package_index.get(flake) {
-            let query = self.package_search_query.to_lowercase();
-            let mut matches: Vec<(String, String)> = names.iter()
-                .filter(|n| n.to_lowercase().contains(&query))
-                .take(100)
-                .map(|n| (n.clone(), String::new()))
-                .collect();
-            
-            // Sort to prioritize exact matches and prefix matches
-            matches.sort_by(|(a, _), (b, _)| {
-                let a_low = a.to_lowercase();
-                let b_low = b.to_lowercase();
-                let a_exact = a_low == query;
-                let b_exact = b_low == query;
-                if a_exact != b_exact { return b_exact.cmp(&a_exact); }
-                let a_prefix = a_low.starts_with(&query);
-                let b_prefix = b_low.starts_with(&query);
-                if a_prefix != b_prefix { return b_prefix.cmp(&a_prefix); }
-                a.len().cmp(&b.len())
-            });
-
-            self.package_search_results = matches;
-            if !self.package_search_results.is_empty() && self.package_search_state.selected().is_none() {
-                self.package_search_state.select(Some(0));
-            }
-            return;
-        }
-
-        // 2. If no index, start building one (once)
         self.is_searching_packages = true;
         let query = self.package_search_query.clone();
         let tx = self.pkg_search_tx.clone();
-        let flake_owned = flake.to_string();
+        
+        // Extract channels from inputs
+        let mut channels: Vec<String> = self.inputs.iter()
+            .filter(|i| i.url.contains("nixpkgs"))
+            .map(|i| extract_channel(&i.url))
+            .collect();
+            
+        if channels.is_empty() {
+            channels.push("nixos-unstable".to_string());
+        }
+        
+        channels.sort();
+        channels.dedup();
+        self.searched_channels = channels.clone();
 
         std::thread::spawn(move || {
             crate::log_action(
-                format!("Indexing packages in {}", flake_owned),
-                "nix eval ... attrNames (this may take a few seconds but only once)"
+                format!("Searching across {} channels for {}", channels.len(), query),
+                format!("nh search --json (channels: {})", channels.join(", "))
             );
 
-            // Attempt to find where packages are. For nixpkgs it's legacyPackages.
-            // For others it might be packages.
-            let system = if cfg!(target_arch = "x86_64") { "x86_64-linux" } else { "aarch64-linux" };
-            let attr_path = format!("{}#legacyPackages.{}", flake_owned, system);
+            let mut threads = Vec::new();
+            for channel in channels {
+                let q = query.clone();
+                let ch = channel.clone();
+                threads.push(std::thread::spawn(move || {
+                    let res = nh_search(q, ch.clone());
+                    (ch, res)
+                }));
+            }
 
-            let mut command = std::process::Command::new("nix");
-            command.args([
-                "eval",
-                &attr_path,
-                "--json",
-                "--apply",
-                "builtins.attrNames",
-            ]);
+            let mut results_map: HashMap<String, SearchResult> = HashMap::new();
+            for t in threads {
+                match t.join() {
+                    Ok((channel, Ok(packages))) => {
+                        for p in packages {
+                            let entry = results_map.entry(p.attribute.clone()).or_insert_with(|| SearchResult {
+                                name: p.attribute.clone(),
+                                description: String::new(),
+                                versions: Vec::new(),
+                                platforms: Vec::new(),
+                            });
+                            
+                            // Prefer description from unstable channel, or whichever is longer
+                            let old_is_unstable = entry.versions.iter().any(|v| v.channel.contains("unstable"));
+                            let new_is_unstable = channel.contains("unstable");
+                            
+                            let desc = p.description.clone().unwrap_or_default();
+                            if entry.description.is_empty() 
+                                || (new_is_unstable && !old_is_unstable)
+                                || desc.len() > entry.description.len() {
+                                entry.description = desc;
+                            }
 
-            let output = command.output();
-            match output {
-                Ok(out) if out.status.success() => {
-                    if let Ok(names) = serde_json::from_slice::<Vec<String>>(&out.stdout) {
-                        // For now we just return the filtered results for the current query
-                        // The actual App state update happens in process_suggestions
-                        let query_low = query.to_lowercase();
-                        let filtered: Vec<(String, String)> = names.iter()
-                            .filter(|n| n.to_lowercase().contains(&query_low))
-                            .take(100)
-                            .map(|n| (n.clone(), String::new()))
-                            .collect();
-                        
-                        // We also need to send the full list back to cache it, but our current
-                        // channel only takes results. Let's send a special signal or just the filtered.
-                        // Actually, let's just use nix search for the VERY first time if query is small,
-                        // or better yet, just return the filtered list and we'll refine this.
-                        let _ = tx.send(Ok(filtered));
-                        
-                        // NOTE: In a more complete impl, we'd cache the full 'names' list in App.
-                    } else {
-                        let _ = tx.send(Err("Failed to parse package names".to_string()));
-                    }
-                }
-                _ => {
-                    // Fallback to traditional nix search if eval fails
-                    let mut command = std::process::Command::new("nix");
-                    command.args(["search", "--json", &flake_owned, &query]);
-                    if let Ok(out) = command.output() {
-                        if out.status.success() {
-                             if let Ok(results) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-                                let mut package_list = Vec::new();
-                                if let Some(obj) = results.as_object() {
-                                    for (key, val) in obj {
-                                        let parts: Vec<&str> = key.split('.').collect();
-                                        let name = parts.last().unwrap_or(&key.as_str()).to_string();
-                                        let desc = val.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                        package_list.push((name, desc));
+                            if let Some(platforms) = p.platforms {
+                                for plat in platforms {
+                                    if !entry.platforms.contains(&plat) {
+                                        entry.platforms.push(plat);
                                     }
                                 }
-                                let _ = tx.send(Ok(package_list));
-                                return;
-                             }
+                                entry.platforms.sort();
+                            }
+
+                            entry.versions.push(ChannelVersion {
+                                version: p.version.unwrap_or_else(|| "Unknown".to_string()),
+                                channel: channel.clone(),
+                            });
                         }
                     }
-                    let _ = tx.send(Err("Search failed".to_string()));
+                    Ok((channel, Err(e))) => {
+                        crate::log_output("Nix Error", format!("Error searching channel {}: {}", channel, e));
+                    }
+                    Err(_) => {
+                        crate::log_output("Nix Error", "Search thread panicked".to_string());
+                    }
                 }
             }
+
+            let mut final_results: Vec<SearchResult> = results_map.into_values().collect();
+            final_results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            let _ = tx.send(Ok(final_results));
         });
     }
 
     pub fn add_package(&mut self) {
-        if let Some((package_name, _)) = self.package_search_results.get(
+        if let Some(result) = self.package_search_results.get(
             self.package_search_state.selected().unwrap_or(0)
         ) {
+            let package_name = &result.name;
             let _path = if let Some(file) = self.nix_files.get(self.selected_nix_file_index) {
                 file.path.clone()
             } else {
