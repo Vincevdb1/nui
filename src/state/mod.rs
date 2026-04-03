@@ -78,6 +78,7 @@ impl AppState {
                     self.ui.last_search_query = self.ui.package_search_query.clone();
                     if self.ui.package_search_query.is_empty() {
                         self.domain.package_search_results.clear();
+                        self.ui.package_search_state.select(None);
                     } else if !self.ui.is_searching_packages {
                         self.perform_package_search();
                     }
@@ -199,9 +200,11 @@ impl AppState {
             }
             Action::PackageSearchChar(c) => {
                 self.ui.package_search_query.push(c);
+                self.ui.last_search_time = std::time::Instant::now();
             }
             Action::PackageSearchBackspace => {
                 self.ui.package_search_query.pop();
+                self.ui.last_search_time = std::time::Instant::now();
             }
             Action::PackageSearchSubmit => {
                 // Add package logic
@@ -310,10 +313,10 @@ impl AppState {
                 match res {
                     Ok(results) => {
                         self.domain.package_search_results = results;
-                        if !self.domain.package_search_results.is_empty()
-                            && self.ui.package_search_state.selected().is_none()
-                        {
+                        if !self.domain.package_search_results.is_empty() {
                             self.ui.package_search_state.select(Some(0));
+                        } else {
+                            self.ui.package_search_state.select(None);
                         }
                     }
                     Err(e) => {
@@ -491,7 +494,58 @@ impl AppState {
             }
 
             let mut final_results: Vec<SearchResult> = results_map.into_values().collect();
-            final_results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            let query_lower = query.to_lowercase();
+            final_results.sort_by(|a, b| {
+                let a_name_lower = a.name.to_lowercase();
+                let b_name_lower = b.name.to_lowercase();
+
+                // 1. Exact match on name
+                let a_exact = a_name_lower == query_lower;
+                let b_exact = b_name_lower == query_lower;
+                if a_exact != b_exact {
+                    return if a_exact {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    };
+                }
+
+                // 2. Starts with query
+                let a_starts = a_name_lower.starts_with(&query_lower);
+                let b_starts = b_name_lower.starts_with(&query_lower);
+                if a_starts != b_starts {
+                    return if a_starts {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    };
+                }
+
+                // 3. Name contains query
+                let a_contains = a_name_lower.contains(&query_lower);
+                let b_contains = b_name_lower.contains(&query_lower);
+                if a_contains != b_contains {
+                    return if a_contains {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    };
+                }
+
+                // 4. Description contains query
+                let a_desc_contains = a.description.to_lowercase().contains(&query_lower);
+                let b_desc_contains = b.description.to_lowercase().contains(&query_lower);
+                if a_desc_contains != b_desc_contains {
+                    return if a_desc_contains {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    };
+                }
+
+                // 5. Alphabetical
+                a_name_lower.cmp(&b_name_lower)
+            });
             let _ = tx.send(Action::SetPackageSearchResults(Ok(final_results)));
         });
     }
