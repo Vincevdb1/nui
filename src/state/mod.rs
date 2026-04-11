@@ -90,18 +90,16 @@ impl AppState {
                     1 => 2,
                     2 => 3,
                     3 => 4,
-                    4 => 5,
-                    5 => 1,
+                    4 => 1,
                     _ => 1,
                 };
             }
             Action::PreviousTab => {
                 self.ui.selected_index = match self.ui.selected_index {
-                    1 => 5,
+                    1 => 4,
                     2 => 1,
                     3 => 2,
                     4 => 3,
-                    5 => 4,
                     _ => 1,
                 };
             }
