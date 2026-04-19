@@ -6,7 +6,7 @@ pub use ui::UiState;
 
 use crate::action::Action;
 use crate::context::find_nix_files;
-use crate::nix::flake::{extract_configurations, extract_inputs};
+use crate::nix::flake::{add_package, extract_configurations, extract_inputs};
 use crate::nix::suggestions::Suggestions;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -284,9 +284,39 @@ impl AppState {
                             }
                             self.ui.is_adding_package = false;
                         } else {
-                            // TODO: Implement for Flake mode (e.g. adding to flake.nix)
-                            crate::log_output("Add Package", format!("Selected {} (Flake mode not yet implemented)", package_name));
-                            self.ui.is_adding_package = false;
+                            if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
+                                let flake_path = &file.path;
+                                if let Some(config) =
+                                    self.domain.configurations.get(self.ui.selected_configuration_index)
+                                {
+                                    let parts: Vec<&str> = config.path.split('.').collect();
+                                    let system = parts.get(0).copied().unwrap_or("x86_64-linux");
+                                    let shell_name = parts.get(1).copied().unwrap_or("default");
+
+                                    match add_package(flake_path, system, shell_name, &package_name) {
+                                        Ok(_) => {
+                                            crate::log_output(
+                                                "Add Package",
+                                                format!(
+                                                    "Successfully added {} to flake.nix",
+                                                    package_name
+                                                ),
+                                            );
+                                            self.update(Action::RefreshContext);
+                                            self.ui.is_adding_package = false;
+                                        }
+                                        Err(e) => {
+                                            crate::log_output(
+                                                "Add Package",
+                                                format!(
+                                                    "Error adding {} to flake.nix: {}",
+                                                    package_name, e
+                                                ),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
