@@ -16,27 +16,64 @@ use crossterm::event::{self, Event, KeyCode};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+
+    let args: Vec<String> = std::env::args().collect();
+    let (mode, shell_packages) = if args.len() > 1 && args[1] == "shell" {
+        (crate::state::Mode::Shell, args[2..].to_vec())
+    } else {
+        (crate::state::Mode::Flake, Vec::new())
+    };
+
     let mut terminal = tui::init()?;
-    let mut app = App::new();
+    let mut app = App::new(mode, shell_packages);
 
     let result = run(&mut terminal, &mut app);
 
     tui::restore()?;
-    result
+
+    if let Ok(Some(packages)) = result {
+        if !packages.is_empty() {
+            let mut args = vec!["shell".to_string()];
+            for pkg in &packages {
+                if pkg.contains('#') {
+                    args.push(pkg.clone());
+                } else {
+                    args.push(format!("github:NixOS/nixpkgs/nixpkgs-unstable#{}", pkg));
+                }
+            }
+            let env_name = if packages.is_empty() {
+                "nui-shell-env".to_string()
+            } else {
+                format!("nui-shell-{}-env", packages.join("."))
+            };
+
+            std::process::Command::new("nix")
+                .args(args)
+                .env("name", env_name)
+                .spawn()?
+                .wait()?;
+        }
+    }
+
+    Ok(())
 }
 
-fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<()> {
+fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<Option<Vec<String>>> {
+    let mut shell_packages = None;
     while !app.should_quit {
         terminal.draw(|frame| ui::render(app, frame))?;
 
         if event::poll(std::time::Duration::from_millis(16))?
             && let Some(action) = map_event(app, event::read()?)
         {
+            if let Action::StartShell(ref pkgs) = action {
+                shell_packages = Some(pkgs.clone());
+            }
             app.update(action);
         }
         app.update(Action::Tick);
     }
-    Ok(())
+    Ok(shell_packages)
 }
 
 fn map_event(app: &App, event: Event) -> Option<Action> {
@@ -113,8 +150,16 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
             KeyCode::Char('3') => Some(Action::SelectTab(3)),
             KeyCode::Char('4') => Some(Action::SelectTab(4)),
             KeyCode::Char('5') => Some(Action::SelectTab(5)),
-            KeyCode::Char('a') if app.ui.selected_index == 2 => Some(Action::OpenAddPackage),
+            KeyCode::Char('a') if app.ui.selected_index == 2 || (app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1) => Some(Action::OpenAddPackage),
             KeyCode::Char('a') if app.ui.selected_index == 3 => Some(Action::OpenAddInput),
+            KeyCode::Char('s') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => Some(Action::StartShell(app.shell_packages.clone())),
+            KeyCode::Char('x') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => {
+                if let Some(i) = app.ui.shell_package_list_state.selected() {
+                    Some(Action::RemovePackage(i))
+                } else {
+                    None
+                }
+            }
             KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveDown),
             KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveUp),
             _ => None,

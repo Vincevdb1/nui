@@ -21,6 +21,7 @@ pub struct UiState {
     pub fetching_package_details: bool,
     pub last_search_query: String,
     pub last_search_time: Instant,
+    pub shell_package_list_state: ListState,
 }
 
 impl Default for UiState {
@@ -44,6 +45,7 @@ impl Default for UiState {
             fetching_package_details: false,
             last_search_query: String::new(),
             last_search_time: Instant::now(),
+            shell_package_list_state: ListState::default(),
         }
     }
 }

@@ -45,4 +45,9 @@ pub enum Action {
     // Context / State Refresh
     RefreshContext,
     FetchPackageDetails,
+
+    // Shell Mode Actions
+    StartShell(Vec<String>),
+    UpdateShellPackages(Vec<String>),
+    RemovePackage(usize),
 }

@@ -11,7 +11,15 @@ use crate::nix::suggestions::Suggestions;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Mode {
+    Flake,
+    Shell,
+}
+
 pub struct AppState {
+    pub mode: Mode,
+    pub shell_packages: Vec<String>,
     pub ui: UiState,
     pub domain: DomainData,
     pub should_quit: bool,
@@ -23,31 +31,38 @@ pub struct AppState {
 
 impl Default for AppState {
     fn default() -> Self {
-        Self::new()
+        Self::new(Mode::Flake, Vec::new())
     }
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(mode: Mode, shell_packages: Vec<String>) -> Self {
         let (tx, rx) = mpsc::channel();
 
         crate::components::command_log::init_logger(tx.clone());
         crate::command_log("Initializing NUI Application...");
 
-        let nix_files = find_nix_files();
-        crate::log_output("Filesystem", format!("Found {} nix files", nix_files.len()));
+        let (nix_files, inputs, configurations) = if mode == Mode::Flake {
+            let nix_files = find_nix_files();
+            crate::log_output("Filesystem", format!("Found {} nix files", nix_files.len()));
 
-        let (inputs, configurations) = if let Some(file) = nix_files.first() {
-            let flake_content = std::fs::read_to_string(&file.path).unwrap_or_default();
-            (
-                extract_inputs(&flake_content),
-                extract_configurations(&flake_content),
-            )
+            let (inputs, configurations) = if let Some(file) = nix_files.first() {
+                let flake_content = std::fs::read_to_string(&file.path).unwrap_or_default();
+                (
+                    extract_inputs(&flake_content),
+                    extract_configurations(&flake_content),
+                )
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            (nix_files, inputs, configurations)
         } else {
-            (Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new())
         };
 
         let mut app = Self {
+            mode,
+            shell_packages,
             ui: UiState::default(),
             domain: DomainData {
                 nix_files,
@@ -60,7 +75,13 @@ impl AppState {
             rx,
         };
 
-        app.fetch_package_details();
+        if app.mode == Mode::Shell {
+            app.ui.selected_index = 1;
+        }
+
+        if app.mode == Mode::Flake {
+            app.fetch_package_details();
+        }
         app
     }
 
@@ -86,27 +107,58 @@ impl AppState {
             }
             Action::Quit => self.should_quit = true,
             Action::NextTab => {
-                self.ui.selected_index = match self.ui.selected_index {
-                    1 => 2,
-                    2 => 3,
-                    3 => 4,
-                    4 => 1,
-                    _ => 1,
+                self.ui.selected_index = if self.mode == Mode::Shell {
+                    match self.ui.selected_index {
+                        1 => 5,
+                        5 => 1,
+                        _ => 1,
+                    }
+                } else {
+                    match self.ui.selected_index {
+                        1 => 2,
+                        2 => 3,
+                        3 => 4,
+                        4 => 1,
+                        _ => 1,
+                    }
                 };
             }
             Action::PreviousTab => {
-                self.ui.selected_index = match self.ui.selected_index {
-                    1 => 4,
-                    2 => 1,
-                    3 => 2,
-                    4 => 3,
-                    _ => 1,
+                self.ui.selected_index = if self.mode == Mode::Shell {
+                    match self.ui.selected_index {
+                        1 => 5,
+                        5 => 1,
+                        _ => 1,
+                    }
+                } else {
+                    match self.ui.selected_index {
+                        1 => 4,
+                        2 => 1,
+                        3 => 2,
+                        4 => 3,
+                        _ => 1,
+                    }
                 };
             }
             Action::SelectTab(index) => {
                 self.ui.selected_index = index;
             }
             Action::MoveDown => match self.ui.selected_index {
+                1 => {
+                    if self.mode == Mode::Shell && !self.shell_packages.is_empty() {
+                        let i = match self.ui.shell_package_list_state.selected() {
+                            Some(i) => {
+                                if i >= self.shell_packages.len() - 1 {
+                                    0
+                                } else {
+                                    i + 1
+                                }
+                            }
+                            None => 0,
+                        };
+                        self.ui.shell_package_list_state.select(Some(i));
+                    }
+                }
                 2 => {
                     if !self.domain.nix_files.is_empty() {
                         self.ui.selected_nix_file_index =
@@ -142,6 +194,21 @@ impl AppState {
                 _ => {}
             },
             Action::MoveUp => match self.ui.selected_index {
+                1 => {
+                    if self.mode == Mode::Shell && !self.shell_packages.is_empty() {
+                        let i = match self.ui.shell_package_list_state.selected() {
+                            Some(i) => {
+                                if i == 0 {
+                                    self.shell_packages.len() - 1
+                                } else {
+                                    i - 1
+                                }
+                            }
+                            None => 0,
+                        };
+                        self.ui.shell_package_list_state.select(Some(i));
+                    }
+                }
                 2 => {
                     if !self.domain.nix_files.is_empty() {
                         self.ui.selected_nix_file_index = if self.ui.selected_nix_file_index == 0 {
@@ -205,7 +272,24 @@ impl AppState {
                 self.ui.last_search_time = std::time::Instant::now();
             }
             Action::PackageSearchSubmit => {
-                // Add package logic
+                if let Some(i) = self.ui.package_search_state.selected() {
+                    if let Some(result) = self.domain.package_search_results.get(i) {
+                        let package_name = result.name.clone();
+                        if self.mode == Mode::Shell {
+                            if !self.shell_packages.contains(&package_name) {
+                                self.shell_packages.push(package_name);
+                                if self.ui.shell_package_list_state.selected().is_none() {
+                                    self.ui.shell_package_list_state.select(Some(0));
+                                }
+                            }
+                            self.ui.is_adding_package = false;
+                        } else {
+                            // TODO: Implement for Flake mode (e.g. adding to flake.nix)
+                            crate::log_output("Add Package", format!("Selected {} (Flake mode not yet implemented)", package_name));
+                            self.ui.is_adding_package = false;
+                        }
+                    }
+                }
             }
             Action::TogglePackageDetails => {
                 self.ui.is_showing_package_details = !self.ui.is_showing_package_details;
@@ -358,6 +442,30 @@ impl AppState {
             }
             Action::FetchPackageDetails => {
                 self.fetch_package_details();
+            }
+            Action::StartShell(packages) => {
+                self.mode = Mode::Shell;
+                self.shell_packages = packages;
+                self.ui.selected_index = 1;
+                self.should_quit = true;
+            }
+            Action::UpdateShellPackages(packages) => {
+                self.shell_packages = packages;
+            }
+            Action::RemovePackage(index) => {
+                if self.mode == Mode::Shell && index < self.shell_packages.len() {
+                    self.shell_packages.remove(index);
+                    if self.shell_packages.is_empty() {
+                        self.ui.shell_package_list_state.select(None);
+                    } else {
+                        let new_index = if index >= self.shell_packages.len() {
+                            self.shell_packages.len() - 1
+                        } else {
+                            index
+                        };
+                        self.ui.shell_package_list_state.select(Some(new_index));
+                    }
+                }
             }
         }
     }

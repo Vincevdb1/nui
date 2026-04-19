@@ -3,6 +3,7 @@ use ratatui::{prelude::*, widgets::*};
 
 pub mod inputs;
 pub mod packages;
+pub mod shell;
 pub mod title;
 
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usize) {
@@ -23,7 +24,13 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
             format!(" Content: {} / {} ", context_name, config_path)
         }
         3 => " Content: Inputs ".to_string(),
-        1 => " Content: Title ".to_string(),
+        1 => {
+            if app.mode == crate::state::Mode::Shell {
+                " Content: Packages ".to_string()
+            } else {
+                " Content: Title ".to_string()
+            }
+        }
         _ => " Content ".to_string(),
     };
 
@@ -44,7 +51,13 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
     frame.render_widget(block, area);
 
     match selected_index {
-        1 => title::render(frame, inner_area),
+        1 => {
+            if app.mode == crate::state::Mode::Shell {
+                shell::render(app, frame, inner_area);
+            } else {
+                title::render(frame, inner_area);
+            }
+        }
         2 | 4 => packages::render(app, frame, inner_area),
         3 => inputs::render(&app.domain.inputs, frame, inner_area),
         _ => {
