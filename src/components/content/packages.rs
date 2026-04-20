@@ -74,13 +74,32 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
             Span::raw("")
         };
 
+        let current_version = pkg.version.clone().unwrap_or_default();
+        let version_line = if let Some(latest) = app.domain.package_updates.get(&pkg.name) {
+            if latest != &current_version {
+                Line::from(vec![
+                    Span::raw(format!(" {}", current_version)),
+                    Span::styled(format!(" (󰚰 {})", latest), Style::default().fg(Color::Yellow)),
+                ])
+            } else {
+                Line::from(format!(" {}", current_version))
+            }
+        } else if app.mode == crate::state::Mode::Shell {
+            Line::from(format!(" {}", current_version))
+        } else {
+            Line::from(vec![
+                Span::raw(format!(" {}", current_version)),
+                Span::styled(" (󰚰 ...)", Style::default().fg(Color::DarkGray)),
+            ])
+        };
+
         rows.push(Row::new(vec![
             Cell::from(Line::from(vec![
                 Span::raw(format!(" {}", pkg.name)),
                 unfree_marker,
             ])),
             Cell::from("│"),
-            Cell::from(format!(" {}", pkg.version.unwrap_or_default())),
+            Cell::from(version_line),
             Cell::from("│"),
             Cell::from(format!(" {}", pkg.description)),
         ]));
@@ -89,7 +108,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let widths = [
         Constraint::Percentage(20),
         Constraint::Length(1),
-        Constraint::Percentage(15),
+        Constraint::Percentage(25),
         Constraint::Length(1),
         Constraint::Min(10),
     ];

@@ -195,5 +195,6 @@ pub struct DomainData {
     pub logs: Vec<LogEntry>,
     pub pending_fetches: HashSet<String>,
     pub package_versions: Vec<VersionInfo>,
+    pub package_updates: HashMap<String, String>,
 }
 

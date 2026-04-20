@@ -607,6 +607,7 @@ impl AppState {
                 }
             }
             Action::UpdatePackageVersion(attribute, version) => {
+                self.domain.package_updates.insert(attribute.clone(), version.clone());
                 for result in &mut self.domain.package_search_results {
                     if result.name == attribute {
                         for cv in &mut result.versions {
@@ -656,6 +657,7 @@ impl AppState {
                                 .package_info
                                 .insert(name, (desc, ver, unfree, source));
                         }
+                        self.check_for_updates();
                     }
                     Err(e) => {
                         crate::log_output(
@@ -1008,6 +1010,41 @@ impl AppState {
                 a_name_lower.cmp(&b_name_lower)
             });
             let _ = tx.send(Action::SetPackageSearchResults(Ok(final_results)));
+        });
+    }
+
+    pub fn check_for_updates(&mut self) {
+        if self.mode == Mode::Shell {
+            return;
+        }
+
+        self.domain.package_updates.clear();
+        let packages: Vec<(String, String)> = self.domain.package_info.iter()
+            .map(|(name, (_, _, _, source))| (name.clone(), source.clone()))
+            .collect();
+        
+        let inputs = self.domain.inputs.clone();
+        let tx = self.tx.clone();
+
+        std::thread::spawn(move || {
+            for (pkg_name, source_input) in packages {
+                let channel = inputs.iter()
+                    .find(|i| i.name == source_input)
+                    .map(|i| domain::extract_channel(i))
+                    .unwrap_or_else(|| "nixos-unstable".to_string());
+
+                let tx = tx.clone();
+                let pkg = pkg_name.clone();
+                std::thread::spawn(move || {
+                    if let Ok(results) = domain::nh_search(pkg.clone(), channel) {
+                        if let Some(latest) = results.iter().find(|p| p.attribute.ends_with(&pkg)) {
+                            if let Some(version) = &latest.version {
+                                let _ = tx.send(Action::UpdatePackageVersion(pkg, version.clone()));
+                            }
+                        }
+                    }
+                });
+            }
         });
     }
 
