@@ -1,11 +1,37 @@
 use crate::nix::{Configuration, Input};
 use color_eyre::Result;
 use rnix::{Root, SyntaxKind, SyntaxNode};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub fn extract_inputs(content: &str) -> Vec<Input> {
+#[derive(Deserialize)]
+struct LockFile {
+    nodes: HashMap<String, LockNode>,
+}
+
+#[derive(Deserialize)]
+struct LockNode {
+    locked: Option<LockLocked>,
+    original: Option<LockOriginal>,
+}
+
+#[derive(Deserialize)]
+struct LockLocked {
+    rev: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct LockOriginal {
+    #[serde(rename = "ref")]
+    branch: Option<String>,
+}
+
+pub fn extract_inputs(content: &str, lock_content: Option<&str>) -> Vec<Input> {
     let mut inputs: HashMap<String, Input> = HashMap::new();
+
+    let lock_data: Option<LockFile> = lock_content
+        .and_then(|c| serde_json::from_str(c).ok());
 
     if let Ok(collection) = nix_editor::parse::get_collection(content.to_string()) {
         for (key, val) in collection {
@@ -13,11 +39,21 @@ pub fn extract_inputs(content: &str) -> Vec<Input> {
                 && let Some(name) = rest.strip_suffix(".url")
             {
                 let url = val.trim_matches('"').to_string();
+                let (branch, rev) = lock_data.as_ref().and_then(|lock| {
+                    lock.nodes.get(name).map(|node| {
+                        let branch = node.original.as_ref().and_then(|o| o.branch.clone());
+                        let rev = node.locked.as_ref().and_then(|l| l.rev.clone());
+                        (branch, rev)
+                    })
+                }).unwrap_or((None, None));
+
                 inputs.insert(
                     name.to_string(),
                     Input {
                         name: name.to_string(),
                         url,
+                        branch,
+                        rev,
                     },
                 );
             }
@@ -133,7 +169,7 @@ pub fn add_input(content: &str, name: &str, url: &str) -> String {
     let name = name.replace('.', "-");
 
     // Check if input already exists
-    let inputs = extract_inputs(content);
+    let inputs = extract_inputs(content, None);
     let already_has_input = inputs.iter().any(|i| i.name == name);
 
     let mut result = if !already_has_input {
@@ -843,7 +879,7 @@ pub fn remove_package(flake_path: &Path, system: &str, shell_name: &str, pkg_nam
     }
 
     if let Some((input_name, _)) = pkg_name.split_once('.') {
-        let inputs = extract_inputs(&new_content);
+        let inputs = extract_inputs(&new_content, None);
         if inputs.iter().any(|i| i.name == input_name) {
             let configs = extract_configurations(&new_content);
             let mut used = false;
@@ -1111,8 +1147,6 @@ fn remove_from_outputs_pattern(content: &str, name: &str) -> String {
             return result;
         }
     }
-
     content.to_string()
 }
-
 

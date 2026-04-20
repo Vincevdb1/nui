@@ -65,7 +65,53 @@ pub fn nh_search(query: String, channel: String) -> Result<Vec<NHPackage>, Strin
     Ok(response.results)
 }
 
-pub fn extract_channel(url: &str) -> String {
+#[derive(Debug, Deserialize)]
+struct NixSearchPackage {
+    description: Option<String>,
+    pname: Option<String>,
+    version: Option<String>,
+}
+
+pub fn nix_search(query: String, rev: String) -> Result<Vec<NHPackage>, String> {
+    let flake_url = format!("github:NixOS/nixpkgs/{}", rev);
+    let output = std::process::Command::new("nix")
+        .args([
+            "search",
+            "--json",
+            &flake_url,
+            &query,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute nix search: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!("nix search failed with status: {}", output.status));
+    }
+
+    let results: HashMap<String, NixSearchPackage> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse nix search output: {}", e))?;
+
+    Ok(results
+        .into_iter()
+        .map(|(attr, pkg)| NHPackage {
+            attribute: attr,
+            pname: pkg.pname,
+            version: pkg.version,
+            description: pkg.description,
+            platforms: None,
+            license_set: None,
+        })
+        .collect())
+}
+
+pub fn extract_channel(input: &Input) -> String {
+    if let Some(branch) = &input.branch {
+        return branch.clone();
+    }
+    if let Some(rev) = &input.rev {
+        return rev.clone();
+    }
+    let url = &input.url;
     if url.contains("nixpkgs") {
         for part in url.split('/') {
             if part.starts_with("nixos-") || part.starts_with("nixpkgs-") {
@@ -74,6 +120,24 @@ pub fn extract_channel(url: &str) -> String {
         }
     }
     "nixos-unstable".to_string()
+}
+
+pub fn fetch_accurate_version(rev: String, attribute: String) -> Option<String> {
+    let flake_url = format!("github:NixOS/nixpkgs/{}#{}", rev, attribute);
+    let output = std::process::Command::new("nix")
+        .args([
+            "eval",
+            "--json",
+            &format!("{}.version", flake_url),
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    serde_json::from_slice::<String>(&output.stdout).ok()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -132,5 +196,4 @@ pub struct DomainData {
     pub pending_fetches: HashSet<String>,
     pub package_versions: Vec<VersionInfo>,
 }
-
 

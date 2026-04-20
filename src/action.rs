@@ -46,6 +46,7 @@ pub enum Action {
     SetPackageSearchResults(Result<Vec<SearchResult>, String>),
     SetPackageDetails(Result<HashMap<String, (String, String, bool, String)>, String>),
     SetVersions(Result<Vec<VersionInfo>, String>),
+    UpdatePackageVersion(String, String),
 
     // Context / State Refresh
     RefreshContext,

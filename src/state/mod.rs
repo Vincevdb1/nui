@@ -48,8 +48,10 @@ impl AppState {
 
             let (inputs, configurations) = if let Some(file) = nix_files.first() {
                 let flake_content = std::fs::read_to_string(&file.path).unwrap_or_default();
+                let lock_path = file.path.parent().unwrap_or(std::path::Path::new(".")).join("flake.lock");
+                let lock_content = std::fs::read_to_string(lock_path).ok();
                 (
-                    extract_inputs(&flake_content),
+                    extract_inputs(&flake_content, lock_content.as_deref()),
                     extract_configurations(&flake_content),
                 )
             } else {
@@ -151,7 +153,9 @@ impl AppState {
                     self.domain.nix_files = nix_files;
                     if let Some(file) = self.domain.nix_files.first() {
                         let flake_content = std::fs::read_to_string(&file.path).unwrap_or_default();
-                        self.domain.inputs = extract_inputs(&flake_content);
+                        let lock_path = file.path.parent().unwrap_or(std::path::Path::new(".")).join("flake.lock");
+                        let lock_content = std::fs::read_to_string(lock_path).ok();
+                        self.domain.inputs = extract_inputs(&flake_content, lock_content.as_deref());
                         self.domain.configurations = extract_configurations(&flake_content);
                         self.fetch_package_details();
                     }
@@ -556,12 +560,63 @@ impl AppState {
                         self.domain.package_search_results = results;
                         if !self.domain.package_search_results.is_empty() {
                             self.ui.package_search_state.select(Some(0));
+
+                            // Refine versions for Flake mode
+                            if self.mode == Mode::Flake {
+                                let top_results = self
+                                    .domain
+                                    .package_search_results
+                                    .iter()
+                                    .take(10)
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                let inputs = self.domain.inputs.clone();
+                                let tx = self.tx.clone();
+
+                                std::thread::spawn(move || {
+                                    for result in top_results {
+                                        for input in &inputs {
+                                            if input.url.contains("nixpkgs") {
+                                                if let Some(rev) = &input.rev {
+                                                    if let Some(version) =
+                                                        domain::fetch_accurate_version(
+                                                            rev.clone(),
+                                                            result.name.clone(),
+                                                        )
+                                                    {
+                                                        let _ = tx.send(
+                                                            Action::UpdatePackageVersion(
+                                                                result.name.clone(),
+                                                                version,
+                                                            ),
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
                         } else {
                             self.ui.package_search_state.select(None);
                         }
                     }
                     Err(e) => {
                         crate::log_output("Nix Error", format!("Error searching packages: {}", e));
+                    }
+                }
+            }
+            Action::UpdatePackageVersion(attribute, version) => {
+                for result in &mut self.domain.package_search_results {
+                    if result.name == attribute {
+                        for cv in &mut result.versions {
+                            if cv.channel.contains("nixpkgs")
+                                || cv.channel.contains("nixos")
+                                || cv.channel.len() == 40
+                            {
+                                cv.version = version.clone();
+                            }
+                        }
                     }
                 }
             }
@@ -614,7 +669,9 @@ impl AppState {
             Action::RefreshContext => {
                 if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
                     let content = std::fs::read_to_string(&file.path).unwrap_or_default();
-                    self.domain.inputs = extract_inputs(&content);
+                    let lock_path = file.path.parent().unwrap_or(std::path::Path::new(".")).join("flake.lock");
+                    let lock_content = std::fs::read_to_string(lock_path).ok();
+                    self.domain.inputs = extract_inputs(&content, lock_content.as_deref());
                     self.domain.configurations = extract_configurations(&content);
                     if self.ui.selected_configuration_index >= self.domain.configurations.len() {
                         self.ui.selected_configuration_index = 0;
@@ -815,31 +872,33 @@ impl AppState {
         let query = self.ui.package_search_query.clone();
         let tx = self.tx.clone();
 
-        // Extract channels from inputs
-        let mut channels: Vec<String> = self
-            .domain
-            .inputs
-            .iter()
-            .filter(|i| i.url.contains("nixpkgs"))
-            .map(|i| domain::extract_channel(&i.url))
-            .collect();
+        let mut search_targets: Vec<String> = if self.mode == Mode::Shell {
+            vec!["nixos-unstable".to_string()]
+        } else {
+            let mut targets = Vec::new();
+            for input in &self.domain.inputs {
+                if input.url.contains("nixpkgs") {
+                    targets.push(domain::extract_channel(input));
+                }
+            }
+            if targets.is_empty() {
+                targets.push("nixos-unstable".to_string());
+            }
+            targets
+        };
 
-        if channels.is_empty() {
-            channels.push("nixos-unstable".to_string());
-        }
-
-        channels.sort();
-        channels.dedup();
-        self.domain.searched_channels = channels.clone();
+        search_targets.sort();
+        search_targets.dedup();
+        self.domain.searched_channels = search_targets.clone();
 
         std::thread::spawn(move || {
             let mut threads = Vec::new();
-            for channel in channels {
+            for target in search_targets {
                 let q = query.clone();
-                let ch = channel.clone();
+                let t = target.clone();
                 threads.push(std::thread::spawn(move || {
-                    let res = domain::nh_search(q, ch.clone());
-                    (ch, res)
+                    let res = domain::nh_search(q, t.clone());
+                    (t, res)
                 }));
             }
 
