@@ -1,5 +1,5 @@
 use crate::components::command_log::LogEntry;
-use crate::state::domain::SearchResult;
+use crate::state::domain::{SearchResult, VersionInfo};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -22,10 +22,12 @@ pub enum Action {
     // Package Search Popup
     PackageSearchChar(char),
     PackageSearchBackspace,
-    PackageSearchSubmit,
+    PackageSearchSubmitDirect,
+    PackageSearchSubmitVersions,
     TogglePackageDetails,
     MoveSearchSelectionDown,
     MoveSearchSelectionUp,
+    BackToPackageSearch,
 
     // Input Popup
     InputPopupChar(char),
@@ -41,13 +43,20 @@ pub enum Action {
     SetSuggestions(Vec<(String, String)>),
     SetPackageSearchResults(Result<Vec<SearchResult>, String>),
     SetPackageDetails(Result<HashMap<String, (String, String)>, String>),
+    SetVersions(Result<Vec<VersionInfo>, String>),
 
     // Context / State Refresh
     RefreshContext,
     FetchPackageDetails,
+    FetchVersions(String),
 
     // Shell Mode Actions
     StartShell(Vec<String>),
     UpdateShellPackages(Vec<String>),
     RemovePackage(usize),
+
+    // Version Selection
+    SelectVersion(VersionInfo),
+    MoveVersionSelectionDown,
+    MoveVersionSelectionUp,
 }

@@ -101,84 +101,278 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
 }
 
 #[allow(dead_code)]
+pub fn add_nixpkgs_input(content: &str, hash: &str) -> String {
+    let name = format!("nixpkgs-{}", hash);
+    let url = format!("github:nixos/nixpkgs/{}", hash);
+    add_input(content, &name, &url)
+}
+
+#[allow(dead_code)]
 pub fn add_input(content: &str, name: &str, url: &str) -> String {
     let name = name.replace('.', "-");
-    let ast = Root::parse(content);
-    use rnix::SyntaxKind;
 
-    for node in ast.syntax().descendants() {
-        if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
-            let has_inputs_path = node.children().any(|c| {
-                c.kind() == SyntaxKind::NODE_ATTRPATH && c.text().to_string().trim() == "inputs"
-            });
+    // Check if input already exists
+    let inputs = extract_inputs(content);
+    let already_has_input = inputs.iter().any(|i| i.name == name);
 
-            if has_inputs_path
-                && let Some(set_node) = node
-                    .children()
-                    .find(|c| c.kind() == SyntaxKind::NODE_ATTR_SET)
-            {
-                let mut close_brace_opt = None;
-                for child in set_node.children_with_tokens() {
-                    if let Some(token) = child.as_token()
-                        && token.text() == "}"
-                    {
-                        close_brace_opt = Some(token.clone());
-                    }
-                }
+    let mut result = if !already_has_input {
+        let ast = Root::parse(content);
+        use rnix::SyntaxKind;
 
-                if let Some(close_brace) = close_brace_opt {
-                    let mut item_indent = "    ".to_string();
-                    for child in set_node.children() {
-                        if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
-                            if let Some(prev) = child.prev_sibling_or_token()
-                                && prev.kind() == SyntaxKind::TOKEN_WHITESPACE
-                            {
-                                let ws = prev.to_string();
-                                if let Some(last_line) = ws.lines().last() {
-                                    item_indent = last_line.to_string();
-                                }
-                            }
-                            break;
+        let mut updated = None;
+        for node in ast.syntax().descendants() {
+            if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                let has_inputs_path = node.children().any(|c| {
+                    c.kind() == SyntaxKind::NODE_ATTRPATH && c.text().to_string().trim() == "inputs"
+                });
+
+                if has_inputs_path
+                    && let Some(set_node) = node
+                        .children()
+                        .find(|c| c.kind() == SyntaxKind::NODE_ATTR_SET)
+                {
+                    let mut close_brace_opt = None;
+                    for child in set_node.children_with_tokens() {
+                        if let Some(token) = child.as_token()
+                            && token.text() == "}"
+                        {
+                            close_brace_opt = Some(token.clone());
                         }
                     }
 
-                    let mut ws_before_brace = String::new();
-                    let mut start_of_replacement = close_brace.text_range().start();
-                    if let Some(prev) = close_brace.prev_sibling_or_token()
-                        && prev.kind() == SyntaxKind::TOKEN_WHITESPACE
-                    {
-                        ws_before_brace = prev.to_string();
-                        start_of_replacement = prev.text_range().start();
+                    if let Some(close_brace) = close_brace_opt {
+                        let mut item_indent = "    ".to_string();
+                        for child in set_node.children() {
+                            if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                                if let Some(prev) = child.prev_sibling_or_token()
+                                    && prev.kind() == SyntaxKind::TOKEN_WHITESPACE
+                                {
+                                    let ws = prev.to_string();
+                                    if let Some(last_line) = ws.lines().last() {
+                                        item_indent = last_line.to_string();
+                                    }
+                                }
+                                break;
+                            }
+                        }
+
+                        let mut ws_before_brace = String::new();
+                        let mut start_of_replacement = close_brace.text_range().start();
+                        if let Some(prev) = close_brace.prev_sibling_or_token()
+                            && prev.kind() == SyntaxKind::TOKEN_WHITESPACE
+                        {
+                            ws_before_brace = prev.to_string();
+                            start_of_replacement = prev.text_range().start();
+                        }
+
+                        let closing_brace_indent =
+                            if let Some(last_line) = ws_before_brace.lines().last() {
+                                last_line.to_string()
+                            } else {
+                                "".to_string()
+                            };
+
+                        let new_entry = format!(
+                            "\n{}{}.url = \"{}\";\n{}}}",
+                            item_indent, name, url, closing_brace_indent
+                        );
+
+                        let mut res = content.to_string();
+                        let start: usize = start_of_replacement.into();
+                        let end: usize = close_brace.text_range().end().into();
+                        res.replace_range(start..end, &new_entry);
+                        updated = Some(res);
+                        break;
                     }
+                }
+            }
+        }
 
-                    let closing_brace_indent =
-                        if let Some(last_line) = ws_before_brace.lines().last() {
-                            last_line.to_string()
-                        } else {
-                            "".to_string()
-                        };
+        updated.unwrap_or_else(|| {
+            let query = format!("inputs.{}.url", name);
+            let value = format!("\"{}\"", url);
+            match nix_editor::write::write(content, &query, &value) {
+                Ok(new_content) => new_content,
+                Err(_) => content.to_string(),
+            }
+        })
+    } else {
+        content.to_string()
+    };
 
-                    let new_entry = format!(
-                        "\n{}{}.url = \"{}\";\n{}}}",
-                        item_indent, name, url, closing_brace_indent
-                    );
+    // Add to outputs pattern
+    result = add_to_outputs_pattern(&result, &name);
 
-                    let mut result = content.to_string();
-                    let start: usize = start_of_replacement.into();
-                    let end: usize = close_brace.text_range().end().into();
-                    result.replace_range(start..end, &new_entry);
-                    return result;
+    result
+}
+
+fn add_to_outputs_pattern(content: &str, name: &str) -> String {
+    let ast = Root::parse(content);
+    let root = ast.syntax();
+    use rnix::SyntaxKind;
+
+    // Find outputs = ...
+    let mut outputs_node = None;
+    for node in root.descendants() {
+        if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+            if let Some(attrpath) = node.children().find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH) {
+                if attrpath.text().to_string().trim() == "outputs" {
+                    outputs_node = Some(node);
+                    break;
                 }
             }
         }
     }
 
-    let query = format!("inputs.{}.url", name);
-    let value = format!("\"{}\"", url);
-    match nix_editor::write::write(content, &query, &value) {
-        Ok(new_content) => new_content,
-        Err(_) => content.to_string(),
+    let Some(outputs_node) = outputs_node else {
+        return content.to_string();
+    };
+
+    // Find the lambda
+    let Some(lambda) = outputs_node
+        .children()
+        .find(|c| c.kind() == SyntaxKind::NODE_LAMBDA)
+    else {
+        return content.to_string();
+    };
+
+    // Find the pattern
+    let Some(pattern) = lambda
+        .children()
+        .find(|c| c.kind() == SyntaxKind::NODE_PATTERN)
+    else {
+        return content.to_string();
+    };
+
+    // Check if name already exists in pattern
+    for child in pattern.children_with_tokens() {
+        let text = child.to_string();
+        let trimmed = text.trim().trim_matches(',');
+        if trimmed == name {
+            return content.to_string();
+        }
     }
+
+    // Find the closing brace of the pattern
+    let mut close_brace = None;
+    for child in pattern.children_with_tokens() {
+        if let Some(token) = child.as_token() {
+            if token.text() == "}" {
+                close_brace = Some(token.clone());
+            }
+        }
+    }
+
+    let Some(close_brace) = close_brace else {
+        return content.to_string();
+    };
+
+    let mut result = content.to_string();
+    let mut start_of_replacement = close_brace.text_range().start();
+    let mut ws_before_brace = String::new();
+    if let Some(prev) = close_brace.prev_sibling_or_token() {
+        if prev.kind() == SyntaxKind::TOKEN_WHITESPACE {
+            ws_before_brace = prev.to_string();
+            if !ws_before_brace.contains('\n') {
+                start_of_replacement = prev.text_range().start();
+            }
+        }
+    }
+
+    // Determine if it's multiline and what the indentation is
+    let mut is_multiline = false;
+    for child in pattern.children_with_tokens() {
+        if child.kind() == SyntaxKind::TOKEN_WHITESPACE && child.to_string().contains('\n') {
+            is_multiline = true;
+        }
+    }
+
+    if is_multiline {
+        // Find if there's a comma before the closing brace
+        let mut has_comma = false;
+        if let Some(prev) = close_brace.prev_sibling_or_token() {
+            let mut curr = Some(prev);
+            while let Some(c) = curr {
+                if c.kind() == SyntaxKind::TOKEN_COMMA {
+                    has_comma = true;
+                    break;
+                }
+                if !matches!(
+                    c.kind(),
+                    SyntaxKind::TOKEN_WHITESPACE | SyntaxKind::TOKEN_COMMENT
+                ) {
+                    break;
+                }
+                curr = c.prev_sibling_or_token();
+            }
+        }
+
+        let mut entry_indent = "      ".to_string();
+        for child in pattern.children_with_tokens() {
+            if child.kind() == SyntaxKind::NODE_PAT_ENTRY || child.kind() == SyntaxKind::TOKEN_IDENT
+            {
+                if let Some(prev) = child.prev_sibling_or_token() {
+                    if prev.kind() == SyntaxKind::TOKEN_WHITESPACE {
+                        if let Some(last_line) = prev.to_string().lines().last() {
+                            entry_indent = last_line.to_string();
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        let closing_brace_indent = if let Some(last_line) = ws_before_brace.lines().last() {
+            last_line.to_string()
+        } else {
+            "".to_string()
+        };
+
+        let insertion = if has_comma {
+            format!("{}{},\n{}", entry_indent, name, closing_brace_indent)
+        } else {
+            // Check if there are any entries at all
+            let has_entries = pattern.children().any(|c| {
+                matches!(
+                    c.kind(),
+                    SyntaxKind::NODE_PAT_ENTRY | SyntaxKind::TOKEN_IDENT
+                )
+            });
+            if has_entries {
+                format!(",\n{}{},\n{}", entry_indent, name, closing_brace_indent)
+            } else {
+                format!("\n{}{},\n{}", entry_indent, name, closing_brace_indent)
+            }
+        };
+
+        let start: usize = close_brace.text_range().start().into();
+        if let Some(prev) = close_brace.prev_sibling_or_token()
+            && prev.kind() == SyntaxKind::TOKEN_WHITESPACE
+        {
+            let start: usize = prev.text_range().start().into();
+            result.replace_range(start..close_brace.text_range().start().into(), &insertion);
+        } else {
+            result.insert_str(start, &insertion);
+        }
+    } else {
+        // Single line
+        let has_entries = pattern.children().any(|c| {
+            matches!(
+                c.kind(),
+                SyntaxKind::NODE_PAT_ENTRY | SyntaxKind::TOKEN_IDENT
+            )
+        });
+        let insertion = if has_entries {
+            format!(", {} ", name)
+        } else {
+            format!(" {} ", name)
+        };
+        let start: usize = start_of_replacement.into();
+        let end: usize = close_brace.text_range().start().into();
+        result.replace_range(start..end, &insertion);
+    }
+
+    result
 }
 
 pub fn add_package(flake_path: &Path, system: &str, shell_name: &str, pkg_name: &str) -> Result<()> {
@@ -613,21 +807,125 @@ mod tests {
     }
 
     #[test]
-    fn test_add_package_missing_structure() -> Result<()> {
+    fn test_add_package_prefixed() -> Result<()> {
         let temp_dir = std::env::temp_dir();
-        let flake_path = temp_dir.join("test_add_package_missing_flake.nix");
+        let flake_path = temp_dir.join("test_add_package_prefixed_flake.nix");
         let content = r#"{
-  outputs = { self, nixpkgs }: {
+  outputs = { self, nixpkgs, nixpkgs-abc }: {
+    devShells.x86_64-linux.default = {
+      packages = [ ];
+    };
   };
 }"#;
         fs::write(&flake_path, content)?;
 
-        add_package(&flake_path, "x86_64-linux", "default", "hello")?;
+        add_package(&flake_path, "x86_64-linux", "default", "nixpkgs-abc.hello")?;
 
         let updated_content = fs::read_to_string(&flake_path)?;
-        assert!(updated_content.contains("hello"));
-        assert!(!updated_content.contains("\"hello\""));
-        assert!(updated_content.contains("devShells"));
+        assert!(updated_content.contains("nixpkgs-abc.hello"));
+        assert!(!updated_content.contains("\"nixpkgs-abc.hello\""));
+
+        fs::remove_file(flake_path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_add_to_outputs_pattern_multiline_no_comma() {
+        let content = r#"{
+  outputs =
+    {
+      self,
+      nixpkgs
+    }:
+    { };
+}"#;
+        let result = add_to_outputs_pattern(content, "nixpkgs-abc");
+        println!("Result: '{}'", result);
+        assert!(result.contains("nixpkgs,"));
+        assert!(result.contains("nixpkgs-abc,"));
+    }
+
+    #[test]
+    fn test_add_to_outputs_pattern_multiline() {
+        let content = r#"{
+  outputs =
+    {
+      self,
+      nixpkgs,
+    }:
+    { };
+}"#;
+        let result = add_to_outputs_pattern(content, "nixpkgs-abc");
+        println!("Result: '{}'", result);
+        assert!(result.contains("nixpkgs-abc,"));
+        assert!(result.contains("nixpkgs,"));
+    }
+
+    #[test]
+    fn test_add_to_outputs_pattern_single_line() {
+        let content = r#"{
+  outputs = { self, nixpkgs }: { };
+}"#;
+        let result = add_to_outputs_pattern(content, "nixpkgs-abc");
+        println!("Result: '{}'", result);
+        assert!(result.contains("{ self, nixpkgs, nixpkgs-abc }"));
+    }
+
+    #[test]
+    fn test_add_nixpkgs_input() {
+        let content = r#"{
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  };
+  outputs = { self, nixpkgs }: { };
+}"#;
+        let hash = "abc123def";
+        let result = add_nixpkgs_input(content, hash);
+        
+        assert!(result.contains("nixpkgs-abc123def.url"));
+        assert!(result.contains("github:nixos/nixpkgs/abc123def"));
+        assert!(result.contains("nixpkgs-abc123def")); // in outputs
+    }
+
+    #[test]
+    fn test_version_pinning_flow() -> Result<()> {
+        let temp_dir = std::env::temp_dir();
+        let flake_path = temp_dir.join("test_pinning_flow_flake.nix");
+        let content = r#"{
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  };
+  outputs = { self, nixpkgs }: {
+    devShells.x86_64-linux.default = {
+      packages = [ ];
+    };
+  };
+}"#;
+        fs::write(&flake_path, content)?;
+
+        let hash = "abc123def";
+        let pkg_name = "hello";
+        let prefixed_pkg = format!("nixpkgs-{}.{}", hash, pkg_name);
+
+        // 1. Add nixpkgs input
+        let content = fs::read_to_string(&flake_path)?;
+        let new_content = add_nixpkgs_input(&content, hash);
+        fs::write(&flake_path, new_content)?;
+
+        // 2. Add package
+        add_package(&flake_path, "x86_64-linux", "default", &prefixed_pkg)?;
+
+        let final_content = fs::read_to_string(&flake_path)?;
+        
+        // Check input
+        assert!(final_content.contains("nixpkgs-abc123def.url"));
+        assert!(final_content.contains("github:nixos/nixpkgs/abc123def"));
+        
+        // Check outputs pattern
+        assert!(final_content.contains("nixpkgs-abc123def"));
+        
+        // Check package
+        assert!(final_content.contains("nixpkgs-abc123def.hello"));
 
         fs::remove_file(flake_path)?;
         Ok(())

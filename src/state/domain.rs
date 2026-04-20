@@ -72,6 +72,43 @@ pub fn extract_channel(url: &str) -> String {
     "nixos-unstable".to_string()
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct VersionInfo {
+    pub version: String,
+    pub hash: String,
+    pub date: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct NXVResult {
+    version: String,
+    last_commit_hash: String,
+    last_commit_date: String,
+}
+
+pub fn fetch_package_versions(pkg: &str) -> Result<Vec<VersionInfo>, String> {
+    let output = std::process::Command::new("nxv")
+        .args(["search", "-e", pkg, "--format", "json"])
+        .output()
+        .map_err(|e| format!("Failed to execute nxv: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!("nxv search failed with status: {}", output.status));
+    }
+
+    let results: Vec<NXVResult> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse nxv output: {}", e))?;
+
+    Ok(results
+        .into_iter()
+        .map(|r| VersionInfo {
+            version: r.version,
+            hash: r.last_commit_hash,
+            date: r.last_commit_date.split('T').next().unwrap_or("").to_string(),
+        })
+        .collect())
+}
+
 #[derive(Default)]
 pub struct DomainData {
     pub nix_files: Vec<NixFile>,
@@ -83,4 +120,47 @@ pub struct DomainData {
     pub suggestions: Suggestions,
     pub logs: Vec<LogEntry>,
     pub pending_fetches: HashSet<String>,
+    pub package_versions: Vec<VersionInfo>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_nxv_json() {
+        let json = r#"[
+  {
+    "id": 1247933,
+    "name": "ripgrep",
+    "version": "15.1.0",
+    "first_commit_hash": "ac9dd6865391c38a62c08f491467455ce51ff34e",
+    "first_commit_date": "2026-02-07T09:19:40Z",
+    "last_commit_hash": "605ce345a1573958ede124887c77fed02eb6b860",
+    "last_commit_date": "2026-02-07T12:02:24Z",
+    "attribute_path": "ripgrep",
+    "description": "Utility that combines the usability of The Silver Searcher with the raw speed of grep",
+    "license": "[\"MIT\",\"Unlicense\"]",
+    "homepage": "https://github.com/BurntSushi/ripgrep",
+    "maintainers": "[\"Ma27\",\"globin\",\"zowoq\"]",
+    "platforms": "[\"aarch64-darwin\"]",
+    "source_path": "pkgs/by-name/ri/ripgrep/package.nix",
+    "known_vulnerabilities": null
+  }
+]"#;
+        let results: Vec<NXVResult> = serde_json::from_str(json).unwrap();
+        let versions: Vec<VersionInfo> = results
+            .into_iter()
+            .map(|r| VersionInfo {
+                version: r.version,
+                hash: r.last_commit_hash,
+                date: r.last_commit_date.split('T').next().unwrap_or("").to_string(),
+            })
+            .collect();
+
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].version, "15.1.0");
+        assert_eq!(versions[0].hash, "605ce345a1573958ede124887c77fed02eb6b860");
+        assert_eq!(versions[0].date, "2026-02-07");
+    }
 }

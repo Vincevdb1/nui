@@ -6,7 +6,7 @@ pub use ui::UiState;
 
 use crate::action::Action;
 use crate::context::find_nix_files;
-use crate::nix::flake::{add_package, extract_configurations, extract_inputs};
+use crate::nix::flake::{add_nixpkgs_input, add_package, extract_configurations, extract_inputs};
 use crate::nix::suggestions::Suggestions;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -249,8 +249,10 @@ impl AppState {
             },
             Action::OpenAddPackage => {
                 self.ui.is_adding_package = true;
+                self.ui.is_selecting_version = false;
                 self.ui.package_search_query.clear();
                 self.domain.package_search_results.clear();
+                self.domain.package_versions.clear();
             }
             Action::OpenAddInput => {
                 self.ui.is_adding_input = true;
@@ -262,6 +264,7 @@ impl AppState {
             Action::ClosePopup => {
                 self.ui.is_adding_package = false;
                 self.ui.is_adding_input = false;
+                self.ui.is_selecting_version = false;
             }
             Action::PackageSearchChar(c) => {
                 self.ui.package_search_query.push(c);
@@ -271,7 +274,15 @@ impl AppState {
                 self.ui.package_search_query.pop();
                 self.ui.last_search_time = std::time::Instant::now();
             }
-            Action::PackageSearchSubmit => {
+            Action::PackageSearchSubmitVersions => {
+                if let Some(i) = self.ui.package_search_state.selected() {
+                    if let Some(result) = self.domain.package_search_results.get(i) {
+                        let package_name = result.name.clone();
+                        self.update(Action::FetchVersions(package_name));
+                    }
+                }
+            }
+            Action::PackageSearchSubmitDirect => {
                 if let Some(i) = self.ui.package_search_state.selected() {
                     if let Some(result) = self.domain.package_search_results.get(i) {
                         let package_name = result.name.clone();
@@ -284,39 +295,42 @@ impl AppState {
                             }
                             self.ui.is_adding_package = false;
                         } else {
-                            if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
-                                let flake_path = &file.path;
-                                if let Some(config) =
-                                    self.domain.configurations.get(self.ui.selected_configuration_index)
+                            if let Some(file) =
+                                self.domain.nix_files.get(self.ui.selected_nix_file_index)
+                            {
+                                let flake_path = file.path.clone();
+                                if let Some(config) = self
+                                    .domain
+                                    .configurations
+                                    .get(self.ui.selected_configuration_index)
                                 {
                                     let parts: Vec<&str> = config.path.split('.').collect();
-                                    let system = parts.get(0).copied().unwrap_or("x86_64-linux");
-                                    let shell_name = parts.get(1).copied().unwrap_or("default");
+                                    let system = parts.get(0).copied().unwrap_or("x86_64-linux").to_string();
+                                    let shell_name = parts.get(1).copied().unwrap_or("default").to_string();
 
-                                    match add_package(flake_path, system, shell_name, &package_name) {
-                                        Ok(_) => {
+                                    let tx = self.tx.clone();
+                                    std::thread::spawn(move || {
+                                        if let Err(e) = crate::nix::flake::add_package(
+                                            &flake_path,
+                                            &system,
+                                            &shell_name,
+                                            &package_name,
+                                        ) {
                                             crate::log_output(
-                                                "Add Package",
-                                                format!(
-                                                    "Successfully added {} to flake.nix",
-                                                    package_name
-                                                ),
+                                                "Error",
+                                                format!("Failed to add package: {}", e),
                                             );
-                                            self.update(Action::RefreshContext);
-                                            self.ui.is_adding_package = false;
-                                        }
-                                        Err(e) => {
+                                        } else {
                                             crate::log_output(
-                                                "Add Package",
-                                                format!(
-                                                    "Error adding {} to flake.nix: {}",
-                                                    package_name, e
-                                                ),
+                                                "Success",
+                                                format!("Added {} to {}", package_name, shell_name),
                                             );
                                         }
-                                    }
+                                        let _ = tx.send(Action::RefreshContext);
+                                    });
                                 }
                             }
+                            self.ui.is_adding_package = false;
                         }
                     }
                 }
@@ -349,6 +363,39 @@ impl AppState {
                     None => 0,
                 };
                 self.ui.package_search_state.select(Some(i));
+            }
+            Action::BackToPackageSearch => {
+                self.ui.is_selecting_version = false;
+            }
+            Action::MoveVersionSelectionDown => {
+                if !self.domain.package_versions.is_empty() {
+                    let i = match self.ui.version_list_state.selected() {
+                        Some(i) => {
+                            if i >= self.domain.package_versions.len().saturating_sub(1) {
+                                0
+                            } else {
+                                i + 1
+                            }
+                        }
+                        None => 0,
+                    };
+                    self.ui.version_list_state.select(Some(i));
+                }
+            }
+            Action::MoveVersionSelectionUp => {
+                if !self.domain.package_versions.is_empty() {
+                    let i = match self.ui.version_list_state.selected() {
+                        Some(i) => {
+                            if i == 0 {
+                                self.domain.package_versions.len().saturating_sub(1)
+                            } else {
+                                i - 1
+                            }
+                        }
+                        None => 0,
+                    };
+                    self.ui.version_list_state.select(Some(i));
+                }
             }
             Action::InputPopupChar(c) => {
                 match self.ui.input_cursor {
@@ -496,6 +543,112 @@ impl AppState {
                         self.ui.shell_package_list_state.select(Some(new_index));
                     }
                 }
+            }
+            Action::FetchVersions(pkg) => {
+                self.ui.is_selecting_version = true;
+                self.ui.is_fetching_versions = true;
+                self.ui.version_fetch_error = None;
+                self.ui.selected_package_name = Some(pkg.clone());
+                self.domain.package_versions.clear();
+                self.ui.version_list_state.select(None);
+
+                let tx = self.tx.clone();
+                std::thread::spawn(move || {
+                    let res = domain::fetch_package_versions(&pkg);
+                    let _ = tx.send(Action::SetVersions(res));
+                });
+            }
+            Action::SetVersions(res) => {
+                self.ui.is_fetching_versions = false;
+                match res {
+                    Ok(versions) => {
+                        self.domain.package_versions = versions;
+                        if !self.domain.package_versions.is_empty() {
+                            self.ui.version_list_state.select(Some(0));
+                        }
+                    }
+                    Err(e) => {
+                        self.ui.version_fetch_error = Some(e.clone());
+                        crate::log_output("Nix Error", format!("Error fetching versions: {}", e));
+                    }
+                }
+            }
+            Action::SelectVersion(version_info) => {
+                if self.mode == Mode::Shell {
+                    if let Some(pkg_name) = self.ui.selected_package_name.clone() {
+                        let pinned_pkg = format!("nixpkgs/{}#{}", version_info.hash, pkg_name);
+                        self.shell_packages.push(pinned_pkg);
+                    }
+                    self.ui.is_adding_package = false;
+                    self.ui.is_selecting_version = false;
+                    self.ui.selected_package_name = None;
+                    return;
+                }
+
+                if let Some(pkg_name) = self.ui.selected_package_name.clone() {
+                    if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
+                        let flake_path = file.path.clone();
+                        let selected_config_index = self.ui.selected_configuration_index;
+                        let configurations = self.domain.configurations.clone();
+                        let tx = self.tx.clone();
+
+                        std::thread::spawn(move || {
+                            let content = std::fs::read_to_string(&flake_path).unwrap_or_default();
+
+                            // 1. Add nixpkgs input
+                            let new_content = add_nixpkgs_input(&content, &version_info.hash);
+                            if let Err(e) = std::fs::write(&flake_path, new_content) {
+                                crate::log_output("Error", format!("Failed to write flake.nix: {}", e));
+                            } else {
+                                // 2. Add package
+                                if let Some(config) = configurations.get(selected_config_index) {
+                                    if config.config_type == "devShells" {
+                                        let parts: Vec<&str> = config.path.split('.').collect();
+                                        let (system, shell_name) = if parts.len() >= 2 {
+                                            (parts[0], parts[1])
+                                        } else {
+                                            ("x86_64-linux", parts[0])
+                                        };
+
+                                        let prefixed_pkg = format!(
+                                            "nixpkgs-{}.legacyPackages.{}.{}",
+                                            version_info.hash, system, pkg_name
+                                        );
+
+                                        if let Err(e) =
+                                            add_package(&flake_path, system, shell_name, &prefixed_pkg)
+                                        {
+                                            crate::log_output(
+                                                "Error",
+                                                format!("Failed to add package: {}", e),
+                                            );
+                                        } else {
+                                            crate::log_output(
+                                                "Success",
+                                                format!(
+                                                    "Added {} to {} ({})",
+                                                    prefixed_pkg, shell_name, system
+                                                ),
+                                            );
+                                        }
+                                    } else {
+                                        crate::log_output(
+                                            "Warning",
+                                            format!(
+                                                "Version pinning is currently only supported for devShells, not {}",
+                                                config.config_type
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                            let _ = tx.send(Action::RefreshContext);
+                        });
+                    }
+                }
+                self.ui.is_adding_package = false;
+                self.ui.is_selecting_version = false;
+                self.ui.selected_package_name = None;
             }
         }
     }

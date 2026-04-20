@@ -1,4 +1,4 @@
-use crate::state::SearchResult;
+use crate::state::domain::{SearchResult, VersionInfo};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -14,6 +14,10 @@ pub fn render(
     channels: &[String],
     is_searching: bool,
     list_state: &mut ListState,
+    is_selecting_version: bool,
+    is_fetching_versions: bool,
+    versions: &[VersionInfo],
+    version_list_state: &mut ListState,
 ) {
     let area = centered_rect(80, 70, frame.area());
     frame.render_widget(Clear, area);
@@ -54,17 +58,52 @@ pub fn render(
     }
     frame.render_widget(Paragraph::new(Line::from(legend_spans)), chunks[1]);
 
+    if is_selecting_version {
+        render_version_selection(
+            frame,
+            chunks[2],
+            is_fetching_versions,
+            versions,
+            version_list_state,
+        );
+    } else {
+        render_package_search(
+            frame,
+            chunks[2],
+            is_searching,
+            results,
+            channels,
+            list_state,
+        );
+    }
+
+    let footer_text = if is_selecting_version {
+        "Enter: Select Version | Esc: Back to Search | q: Close"
+    } else {
+        "Type: Search | Enter: Add | M-Enter: Versions | Tab: Details | Esc/q: Close"
+    };
+    let footer = Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(footer, chunks[3]);
+}
+
+fn render_package_search(
+    frame: &mut Frame,
+    area: Rect,
+    is_searching: bool,
+    results: &[SearchResult],
+    channels: &[String],
+    list_state: &mut ListState,
+) {
     let list_title = if is_searching {
         " Searching... "
     } else {
-        " Search Results (Enter to add) "
+        " Search Results (Enter to select) "
     };
 
     if results.is_empty() {
         let block = Block::default().title(list_title).borders(Borders::ALL);
-        frame.render_widget(block, chunks[2]);
+        frame.render_widget(block, area);
 
-        let area = chunks[2];
         let vertical_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -154,12 +193,83 @@ pub fn render(
             )
             .highlight_symbol(">> ");
 
-        frame.render_stateful_widget(list, chunks[2], list_state);
+        frame.render_stateful_widget(list, area, list_state);
     }
+}
 
-    let footer_text = "Type: Search | Enter: Add | Tab: Details | Esc/q: Close";
-    let footer = Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(footer, chunks[3]);
+fn render_version_selection(
+    frame: &mut Frame,
+    area: Rect,
+    is_fetching: bool,
+    versions: &[VersionInfo],
+    list_state: &mut ListState,
+) {
+    let list_title = if is_fetching {
+        " Searching for versions... "
+    } else {
+        " Select Version (Enter to add) "
+    };
+
+    if versions.is_empty() && !is_fetching {
+        let block = Block::default().title(list_title).borders(Borders::ALL);
+        frame.render_widget(block, area);
+
+        let vertical_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
+
+        let empty = Paragraph::new("No versions found.").alignment(Alignment::Center);
+        frame.render_widget(empty, vertical_chunks[1]);
+    } else if is_fetching && versions.is_empty() {
+        let block = Block::default().title(list_title).borders(Borders::ALL);
+        frame.render_widget(block, area);
+
+        let vertical_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
+
+        let loading = Paragraph::new("Fetching versions from nxv...").alignment(Alignment::Center);
+        frame.render_widget(loading, vertical_chunks[1]);
+    } else {
+        let items: Vec<ListItem> = versions
+            .iter()
+            .map(|v| {
+                let spans = vec![
+                    Span::styled(
+                        format!("  {:15}", v.version),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(" | "),
+                    Span::styled(format!("{:10}", v.hash), Style::default().fg(Color::Cyan)),
+                    Span::raw(" | "),
+                    Span::styled(&v.date, Style::default().fg(Color::DarkGray)),
+                ];
+                ListItem::new(Line::from(spans))
+            })
+            .collect();
+
+        let list = List::new(items)
+            .block(Block::default().title(list_title).borders(Borders::ALL))
+            .highlight_style(
+                Style::default()
+                    .bg(Color::Cyan)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol(">> ");
+
+        frame.render_stateful_widget(list, area, list_state);
+    }
 }
 
 pub fn render_details(frame: &mut Frame, result: &SearchResult) {

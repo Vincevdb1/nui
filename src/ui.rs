@@ -119,6 +119,10 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             &app.domain.searched_channels,
             app.ui.is_searching_packages,
             &mut app.ui.package_search_state,
+            app.ui.is_selecting_version,
+            app.ui.is_fetching_versions,
+            &app.domain.package_versions,
+            &mut app.ui.version_list_state,
         );
     }
 

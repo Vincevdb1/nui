@@ -91,6 +91,24 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
                 };
             }
 
+            if app.ui.is_selecting_version {
+                return match key.code {
+                    KeyCode::Esc => Some(Action::BackToPackageSearch),
+                    KeyCode::Char('q') => Some(Action::ClosePopup),
+                    KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveVersionSelectionDown),
+                    KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveVersionSelectionUp),
+                    KeyCode::Enter => {
+                        if let Some(i) = app.ui.version_list_state.selected() {
+                            if let Some(version) = app.domain.package_versions.get(i) {
+                                return Some(Action::SelectVersion(version.clone()));
+                            }
+                        }
+                        None
+                    }
+                    _ => None,
+                };
+            }
+
             return match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => Some(Action::ClosePopup),
                 KeyCode::Tab => {
@@ -109,7 +127,10 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
                 KeyCode::Down => Some(Action::MoveSearchSelectionDown),
                 KeyCode::Up => Some(Action::MoveSearchSelectionUp),
                 KeyCode::Backspace => Some(Action::PackageSearchBackspace),
-                KeyCode::Enter => Some(Action::PackageSearchSubmit),
+                KeyCode::Enter if key.modifiers.contains(event::KeyModifiers::ALT) => {
+                    Some(Action::PackageSearchSubmitVersions)
+                }
+                KeyCode::Enter => Some(Action::PackageSearchSubmitDirect),
                 KeyCode::Char(c) => Some(Action::PackageSearchChar(c)),
                 _ => None,
             };

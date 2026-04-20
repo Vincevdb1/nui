@@ -22,6 +22,11 @@ pub struct UiState {
     pub last_search_query: String,
     pub last_search_time: Instant,
     pub shell_package_list_state: ListState,
+    pub is_selecting_version: bool,
+    pub is_fetching_versions: bool,
+    pub version_fetch_error: Option<String>,
+    pub version_list_state: ListState,
+    pub selected_package_name: Option<String>,
 }
 
 impl Default for UiState {
@@ -46,6 +51,11 @@ impl Default for UiState {
             last_search_query: String::new(),
             last_search_time: Instant::now(),
             shell_package_list_state: ListState::default(),
+            is_selecting_version: false,
+            is_fetching_versions: false,
+            version_fetch_error: None,
+            version_list_state: ListState::default(),
+            selected_package_name: None,
         }
     }
 }
