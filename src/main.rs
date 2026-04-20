@@ -44,7 +44,7 @@ fn main() -> Result<()> {
             let env_name = if packages.is_empty() {
                 "nui-shell-env".to_string()
             } else {
-                format!("nui-shell:{}-env", packages.join("."))
+                format!("nui-shell:{}-env", packages.join(":"))
             };
 
             args.push("--impure".to_string());
