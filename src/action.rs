@@ -50,6 +50,9 @@ pub enum Action {
     FetchPackageDetails,
     FetchVersions(String),
 
+    // Mode switching
+    SwitchMode,
+
     // Shell Mode Actions
     StartShell(Vec<String>),
     UpdateShellPackages(Vec<String>),

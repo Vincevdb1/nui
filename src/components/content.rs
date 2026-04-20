@@ -34,7 +34,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
         _ => " Content ".to_string(),
     };
 
-    let is_selected = false;
+    let is_selected = app.mode == crate::state::Mode::Shell && selected_index == 1;
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)

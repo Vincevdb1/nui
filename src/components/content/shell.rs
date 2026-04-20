@@ -22,19 +22,6 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let is_empty = items.is_empty();
 
     let list = List::new(items)
-        .block(
-            Block::default()
-                .title(" Shell Packages ")
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(if app.ui.selected_index == 1 {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                }),
-        )
         .highlight_style(
             Style::default()
                 .bg(Color::Cyan)
@@ -49,20 +36,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
             Line::from(""),
             Line::from("Press 'a' to add packages to your temporary shell."),
         ])
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .title(" Shell Packages ")
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(if app.ui.selected_index == 1 {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                }),
-        );
+        .alignment(Alignment::Center);
 
         // Center the paragraph vertically
         let area = Layout::default()

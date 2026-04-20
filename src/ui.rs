@@ -12,9 +12,9 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(frame.area());
 
-    if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 {
+    if app.mode == crate::state::Mode::Shell {
         // Full screen (minus footer) for shell packages
-        content::render(app, frame, chunks[0], app.ui.selected_index);
+        content::render(app, frame, chunks[0], 1);
     } else {
         // Create the 2nd row layout (2 columns)
         let body_chunks = Layout::default()
@@ -82,19 +82,15 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     }
 
     let footer_text = if app.mode == crate::state::Mode::Shell {
-        match app.ui.selected_index {
-            1 => "a: Add | x: Remove | s: Start Shell | j/k: Select | Tab: Logs | q: Quit",
-            5 => "j/k: Scroll Logs | Tab: Packages | q: Quit",
-            _ => "Press 'Tab' to switch focus, 'q' to quit",
-        }
+        "a: Add | x: Remove | s: Start Shell | m: Switch Mode | j/k: Select | q: Quit"
     } else {
         match app.ui.selected_index {
-            1 => "Tab: Switch focus | 1-5: Select tab | q: Quit",
-            2 => "a: Add Package | j/k: Select File | Tab: Switch focus | 1-5: Select tab | q: Quit",
-            3 => "a: Add Input | Tab: Switch focus | 1-5: Select tab | q: Quit",
-            4 => "j/k: Select Config | Tab: Switch focus | 1-5: Select tab | q: Quit",
-            5 => "j/k: Scroll Logs | Tab: Switch focus | 1-5: Select tab | q: Quit",
-            _ => "Press 'Tab' to switch focus, 'q' to quit",
+            1 => "Tab: Switch focus | m: Switch Mode | 1-5: Select tab | q: Quit",
+            2 => "a: Add Package | m: Switch Mode | j/k: Select File | Tab: Switch focus | 1-5: Select tab | q: Quit",
+            3 => "a: Add Input | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
+            4 => "j/k: Select Config | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
+            5 => "j/k: Scroll Logs | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
+            _ => "Press 'm' to switch mode, 'Tab' to switch focus, 'q' to quit",
         }
     };
 

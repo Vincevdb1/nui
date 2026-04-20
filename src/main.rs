@@ -20,6 +20,8 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let (mode, shell_packages) = if args.len() > 1 && args[1] == "shell" {
         (crate::state::Mode::Shell, args[2..].to_vec())
+    } else if !std::path::Path::new("flake.nix").exists() {
+        (crate::state::Mode::Shell, Vec::new())
     } else {
         (crate::state::Mode::Flake, Vec::new())
     };
@@ -184,6 +186,7 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
                     None
                 }
             }
+            KeyCode::Char('m') => Some(Action::SwitchMode),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveDown),
             KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveUp),
             _ => None,

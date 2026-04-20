@@ -108,11 +108,7 @@ impl AppState {
             Action::Quit => self.should_quit = true,
             Action::NextTab => {
                 self.ui.selected_index = if self.mode == Mode::Shell {
-                    match self.ui.selected_index {
-                        1 => 5,
-                        5 => 1,
-                        _ => 1,
-                    }
+                    1
                 } else {
                     match self.ui.selected_index {
                         1 => 2,
@@ -125,11 +121,7 @@ impl AppState {
             }
             Action::PreviousTab => {
                 self.ui.selected_index = if self.mode == Mode::Shell {
-                    match self.ui.selected_index {
-                        1 => 5,
-                        5 => 1,
-                        _ => 1,
-                    }
+                    1
                 } else {
                     match self.ui.selected_index {
                         1 => 4,
@@ -142,6 +134,28 @@ impl AppState {
             }
             Action::SelectTab(index) => {
                 self.ui.selected_index = index;
+            }
+            Action::SwitchMode => {
+                if self.mode == Mode::Flake {
+                    self.mode = Mode::Shell;
+                    self.ui.selected_index = 1;
+                    // Clear domain data that is specific to Flake mode
+                    self.domain.nix_files = Vec::new();
+                    self.domain.inputs = Vec::new();
+                    self.domain.configurations = Vec::new();
+                } else {
+                    self.mode = Mode::Flake;
+                    self.ui.selected_index = 1;
+                    // Re-initialize Flake mode data
+                    let nix_files = find_nix_files();
+                    self.domain.nix_files = nix_files;
+                    if let Some(file) = self.domain.nix_files.first() {
+                        let flake_content = std::fs::read_to_string(&file.path).unwrap_or_default();
+                        self.domain.inputs = extract_inputs(&flake_content);
+                        self.domain.configurations = extract_configurations(&flake_content);
+                        self.fetch_package_details();
+                    }
+                }
             }
             Action::MoveDown => match self.ui.selected_index {
                 1 => {
