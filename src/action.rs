@@ -42,7 +42,7 @@ pub enum Action {
     Log(LogEntry),
     SetSuggestions(Vec<(String, String)>),
     SetPackageSearchResults(Result<Vec<SearchResult>, String>),
-    SetPackageDetails(Result<HashMap<String, (String, String)>, String>),
+    SetPackageDetails(Result<HashMap<String, (String, String, bool)>, String>),
     SetVersions(Result<Vec<VersionInfo>, String>),
 
     // Context / State Refresh

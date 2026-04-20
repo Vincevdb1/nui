@@ -33,7 +33,6 @@ pub fn render(
         .margin(2)
         .constraints([
             Constraint::Length(3),
-            Constraint::Length(1), // Channel legend
             Constraint::Min(0),
             Constraint::Length(1),
         ])
@@ -47,21 +46,10 @@ pub fn render(
     );
     frame.render_widget(search_input, chunks[0]);
 
-    // Channel Legend
-    let mut legend_spans = Vec::new();
-    for (i, channel) in channels.iter().enumerate() {
-        let color = get_channel_color(channel);
-        legend_spans.push(Span::styled(channel, Style::default().fg(color)));
-        if i < channels.len() - 1 {
-            legend_spans.push(Span::raw(" | "));
-        }
-    }
-    frame.render_widget(Paragraph::new(Line::from(legend_spans)), chunks[1]);
-
     if is_selecting_version {
         render_version_selection(
             frame,
-            chunks[2],
+            chunks[1],
             is_fetching_versions,
             versions,
             version_list_state,
@@ -69,7 +57,7 @@ pub fn render(
     } else {
         render_package_search(
             frame,
-            chunks[2],
+            chunks[1],
             is_searching,
             results,
             channels,
@@ -83,7 +71,7 @@ pub fn render(
         "Type: Search | Enter: Add | M-Enter: Versions | Tab: Details | Esc/q: Close"
     };
     let footer = Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(footer, chunks[3]);
+    frame.render_widget(footer, chunks[2]);
 }
 
 fn render_package_search(
@@ -122,7 +110,8 @@ fn render_package_search(
             .map(|res| res.name.len())
             .max()
             .unwrap_or(0)
-            .max(10);
+            .max(10)
+            + 2; // +2 for unfree marker space
 
         let mut max_version_widths = Vec::new();
         for channel in channels {
@@ -137,16 +126,51 @@ fn render_package_search(
                 })
                 .max()
                 .unwrap_or(0);
-            max_version_widths.push(max_w.max(5)); // Minimum width for a version column
+            max_version_widths.push(max_w.max(channel.len()).max(5));
         }
+
+        // Header needs 3 spaces padding to account for the List's highlight symbol ">> "
+        // plus 1 extra for the List's block border
+        let mut header_spans = vec![
+            Span::raw("      "), // 1 for border + 3 for selection + 2 for unfree marker space
+            Span::styled(
+                format!("{:width$}", "Name", width = max_name_width - 1),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+        ];
+
+        for (i, channel) in channels.iter().enumerate() {
+            header_spans.push(Span::raw(" | "));
+            let color = get_channel_color(channel);
+            header_spans.push(Span::styled(
+                format!("{:width$}", channel, width = max_version_widths[i]),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ));
+        }
+        header_spans.push(Span::raw(" | "));
+        header_spans.push(Span::styled(
+            "Description",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+
+        let header = Paragraph::new(Line::from(header_spans));
 
         let items: Vec<ListItem> = results
             .iter()
             .map(|res| {
-                let mut spans = vec![Span::styled(
-                    format!("  {:width$}", res.name, width = max_name_width),
-                    Style::default().add_modifier(Modifier::BOLD),
-                )];
+                let unfree_marker = if res.is_unfree {
+                    Span::styled("$ ", Style::default().fg(Color::Green))
+                } else {
+                    Span::raw("  ")
+                };
+
+                let mut spans = vec![
+                    unfree_marker,
+                    Span::styled(
+                        format!("{:width$}", res.name, width = max_name_width - 1),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                ];
 
                 for (i, channel) in channels.iter().enumerate() {
                     spans.push(Span::raw(" | "));
@@ -183,6 +207,13 @@ fn render_package_search(
             })
             .collect();
 
+        let list_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .split(area);
+
+        frame.render_widget(header, list_chunks[0]);
+
         let list = List::new(items)
             .block(Block::default().title(list_title).borders(Borders::ALL))
             .highlight_style(
@@ -193,7 +224,7 @@ fn render_package_search(
             )
             .highlight_symbol(">> ");
 
-        frame.render_stateful_widget(list, area, list_state);
+        frame.render_stateful_widget(list, list_chunks[1], list_state);
     }
 }
 
@@ -241,12 +272,38 @@ fn render_version_selection(
         let loading = Paragraph::new("Fetching versions from nxv...").alignment(Alignment::Center);
         frame.render_widget(loading, vertical_chunks[1]);
     } else {
+        let header_spans = vec![
+            Span::raw("      "), // 1 for border + 3 for selection + 2 for unfree marker space
+            Span::styled(
+                format!("{:16}", "Version"),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" | "),
+            Span::styled(
+                format!("{:10}", "Hash"),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" | "),
+            Span::styled(
+                "Date",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+        ];
+        let header = Paragraph::new(Line::from(header_spans));
+
         let items: Vec<ListItem> = versions
             .iter()
             .map(|v| {
+                let unfree_marker = if v.is_unfree {
+                    Span::styled("$ ", Style::default().fg(Color::Green))
+                } else {
+                    Span::raw("  ")
+                };
+
                 let spans = vec![
+                    unfree_marker,
                     Span::styled(
-                        format!("  {:15}", v.version),
+                        format!("{:16}", v.version),
                         Style::default().add_modifier(Modifier::BOLD),
                     ),
                     Span::raw(" | "),
@@ -258,6 +315,13 @@ fn render_version_selection(
             })
             .collect();
 
+        let list_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .split(area);
+
+        frame.render_widget(header, list_chunks[0]);
+
         let list = List::new(items)
             .block(Block::default().title(list_title).borders(Borders::ALL))
             .highlight_style(
@@ -268,7 +332,7 @@ fn render_version_selection(
             )
             .highlight_symbol(">> ");
 
-        frame.render_stateful_widget(list, area, list_state);
+        frame.render_stateful_widget(list, list_chunks[1], list_state);
     }
 }
 
@@ -311,10 +375,17 @@ pub fn render_details(frame: &mut Frame, result: &SearchResult) {
         .split(inner_area);
 
     // Name
+    let unfree_marker = if result.is_unfree {
+        Span::styled(" [UNFREE]", Style::default().fg(Color::Green))
+    } else {
+        Span::raw("")
+    };
+
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("Attribute: ", Style::default().fg(Color::DarkGray)),
             Span::styled(&result.name, Style::default().add_modifier(Modifier::BOLD)),
+            unfree_marker,
         ])),
         chunks[0],
     );

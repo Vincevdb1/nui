@@ -17,6 +17,8 @@ pub struct NHPackage {
     pub description: Option<String>,
     #[serde(rename = "package_platforms")]
     pub platforms: Option<Vec<String>>,
+    #[serde(rename = "package_license_set")]
+    pub license_set: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +33,7 @@ pub struct SearchResult {
     pub description: String,
     pub versions: Vec<ChannelVersion>,
     pub platforms: Vec<String>,
+    pub is_unfree: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +80,7 @@ pub struct VersionInfo {
     pub version: String,
     pub hash: String,
     pub date: String,
+    pub is_unfree: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,6 +88,7 @@ struct NXVResult {
     version: String,
     last_commit_hash: String,
     last_commit_date: String,
+    license: Option<String>,
 }
 
 pub fn fetch_package_versions(pkg: &str) -> Result<Vec<VersionInfo>, String> {
@@ -101,10 +106,14 @@ pub fn fetch_package_versions(pkg: &str) -> Result<Vec<VersionInfo>, String> {
 
     Ok(results
         .into_iter()
-        .map(|r| VersionInfo {
-            version: r.version,
-            hash: r.last_commit_hash,
-            date: r.last_commit_date.split('T').next().unwrap_or("").to_string(),
+        .map(|r| {
+            let is_unfree = r.license.as_ref().map(|l| l.to_lowercase().contains("unfree")).unwrap_or(false);
+            VersionInfo {
+                version: r.version,
+                hash: r.last_commit_hash,
+                date: r.last_commit_date.split('T').next().unwrap_or("").to_string(),
+                is_unfree,
+            }
         })
         .collect())
 }
@@ -114,7 +123,7 @@ pub struct DomainData {
     pub nix_files: Vec<NixFile>,
     pub inputs: Vec<Input>,
     pub configurations: Vec<Configuration>,
-    pub package_info: HashMap<String, (String, String)>,
+    pub package_info: HashMap<String, (String, String, bool)>,
     pub package_search_results: Vec<SearchResult>,
     pub searched_channels: Vec<String>,
     pub suggestions: Suggestions,

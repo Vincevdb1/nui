@@ -762,8 +762,15 @@ impl AppState {
                                 description: String::new(),
                                 versions: Vec::new(),
                                 platforms: Vec::new(),
+                                is_unfree: false,
                             }
                         });
+
+                        if let Some(license_set) = p.license_set {
+                            if license_set.iter().any(|l| l.to_lowercase().contains("unfree")) {
+                                entry.is_unfree = true;
+                            }
+                        }
 
                         let old_is_unstable = entry
                             .versions

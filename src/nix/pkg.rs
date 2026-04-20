@@ -7,6 +7,7 @@ pub struct Package {
     pub name: String,
     pub description: String,
     pub version: Option<String>,
+    pub is_unfree: bool,
 }
 
 impl Package {
@@ -14,7 +15,7 @@ impl Package {
         flake_path: &str,
         config_type: &str,
         config_name: &str,
-    ) -> Result<HashMap<String, (String, String)>, String> {
+    ) -> Result<HashMap<String, (String, String, bool)>, String> {
         let mut results = HashMap::new();
 
         let target_attr = if config_type == "devShells" {
@@ -53,6 +54,12 @@ impl Package {
             name = p.name or "";
             version = p.version or (builtins.parseDrvName p.name).version;
             description = p.meta.description or "";
+            is_unfree = if p ? meta && p.meta ? license then 
+              let 
+                lic = p.meta.license;
+                isUnfree = l: if builtins.isAttrs l then l.free or true == false else false;
+              in if builtins.isList lic then builtins.any isUnfree lic else isUnfree lic
+            else false;
           }} else null;
           extractList = l: if builtins.isList l then builtins.filter (x: x != null) (map getPkgInfo l) else [];
           extract = t: {};
@@ -85,6 +92,7 @@ impl Package {
                 name: String,
                 version: String,
                 description: String,
+                is_unfree: bool,
             }
 
             if let Ok(eval_results) = serde_json::from_slice::<Vec<EvalPkg>>(&output.stdout) {
@@ -95,7 +103,7 @@ impl Package {
                     } else {
                         pkg.name
                     };
-                    results.insert(key, (pkg.description, pkg.version));
+                    results.insert(key, (pkg.description, pkg.version, pkg.is_unfree));
                 }
                 crate::log_output(
                     "Nix Output",

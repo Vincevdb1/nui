@@ -5,11 +5,12 @@ use throbber_widgets_tui::Throbber;
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let mut all_packages = Vec::new();
 
-    for (name, (description, version)) in &app.domain.package_info {
+    for (name, (description, version, is_unfree)) in &app.domain.package_info {
         all_packages.push(crate::nix::Package {
             name: name.clone(),
             description: description.clone(),
             version: Some(version.clone()),
+            is_unfree: *is_unfree,
         });
     }
 
@@ -66,8 +67,17 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     ]));
 
     for pkg in all_packages {
+        let unfree_marker = if pkg.is_unfree {
+            Span::styled(" $", Style::default().fg(Color::Green))
+        } else {
+            Span::raw("")
+        };
+
         rows.push(Row::new(vec![
-            Cell::from(format!(" {}", pkg.name)),
+            Cell::from(Line::from(vec![
+                Span::raw(format!(" {}", pkg.name)),
+                unfree_marker,
+            ])),
             Cell::from("│"),
             Cell::from(format!(" {}", pkg.version.unwrap_or_default())),
             Cell::from("│"),
