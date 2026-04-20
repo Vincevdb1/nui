@@ -367,6 +367,7 @@ pub fn render_details(frame: &mut Frame, result: &SearchResult) {
         .margin(1)
         .constraints([
             Constraint::Length(1),                                // Name
+            Constraint::Length(if result.source_input.is_some() { 1 } else { 0 }), // Source
             Constraint::Length(result.versions.len() as u16 + 1), // Versions
             Constraint::Length(platforms_height),                 // Platforms
             Constraint::Min(0),                                   // Description
@@ -390,6 +391,17 @@ pub fn render_details(frame: &mut Frame, result: &SearchResult) {
         chunks[0],
     );
 
+    // Source
+    if let Some(source) = &result.source_input {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled("Source: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(source, Style::default().fg(Color::Yellow)),
+            ])),
+            chunks[1],
+        );
+    }
+
     // Versions
     let mut version_lines = vec![Line::from(Span::styled(
         "Available Versions:",
@@ -404,7 +416,7 @@ pub fn render_details(frame: &mut Frame, result: &SearchResult) {
             Span::styled(&ver.version, Style::default().add_modifier(Modifier::BOLD)),
         ]));
     }
-    frame.render_widget(Paragraph::new(version_lines), chunks[1]);
+    frame.render_widget(Paragraph::new(version_lines), chunks[2]);
 
     // Platforms
     if !result.platforms.is_empty() {
@@ -414,7 +426,7 @@ pub fn render_details(frame: &mut Frame, result: &SearchResult) {
                 Span::raw(platforms_text),
             ]))
             .wrap(ratatui::widgets::Wrap { trim: true }),
-            chunks[2],
+            chunks[3],
         );
     }
 
@@ -432,7 +444,7 @@ pub fn render_details(frame: &mut Frame, result: &SearchResult) {
                     .borders(Borders::TOP),
             )
             .wrap(ratatui::widgets::Wrap { trim: true }),
-        chunks[3],
+        chunks[4],
     );
 
     // Footer
@@ -440,7 +452,7 @@ pub fn render_details(frame: &mut Frame, result: &SearchResult) {
         Paragraph::new("Press Tab, q, or Esc to close")
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center),
-        chunks[4],
+        chunks[5],
     );
 }
 

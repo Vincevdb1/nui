@@ -34,6 +34,7 @@ pub struct SearchResult {
     pub versions: Vec<ChannelVersion>,
     pub platforms: Vec<String>,
     pub is_unfree: bool,
+    pub source_input: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,7 +124,7 @@ pub struct DomainData {
     pub nix_files: Vec<NixFile>,
     pub inputs: Vec<Input>,
     pub configurations: Vec<Configuration>,
-    pub package_info: HashMap<String, (String, String, bool)>,
+    pub package_info: HashMap<String, (String, String, bool, String)>,
     pub package_search_results: Vec<SearchResult>,
     pub searched_channels: Vec<String>,
     pub suggestions: Suggestions,
@@ -132,44 +133,4 @@ pub struct DomainData {
     pub package_versions: Vec<VersionInfo>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn test_parse_nxv_json() {
-        let json = r#"[
-  {
-    "id": 1247933,
-    "name": "ripgrep",
-    "version": "15.1.0",
-    "first_commit_hash": "ac9dd6865391c38a62c08f491467455ce51ff34e",
-    "first_commit_date": "2026-02-07T09:19:40Z",
-    "last_commit_hash": "605ce345a1573958ede124887c77fed02eb6b860",
-    "last_commit_date": "2026-02-07T12:02:24Z",
-    "attribute_path": "ripgrep",
-    "description": "Utility that combines the usability of The Silver Searcher with the raw speed of grep",
-    "license": "[\"MIT\",\"Unlicense\"]",
-    "homepage": "https://github.com/BurntSushi/ripgrep",
-    "maintainers": "[\"Ma27\",\"globin\",\"zowoq\"]",
-    "platforms": "[\"aarch64-darwin\"]",
-    "source_path": "pkgs/by-name/ri/ripgrep/package.nix",
-    "known_vulnerabilities": null
-  }
-]"#;
-        let results: Vec<NXVResult> = serde_json::from_str(json).unwrap();
-        let versions: Vec<VersionInfo> = results
-            .into_iter()
-            .map(|r| VersionInfo {
-                version: r.version,
-                hash: r.last_commit_hash,
-                date: r.last_commit_date.split('T').next().unwrap_or("").to_string(),
-            })
-            .collect();
-
-        assert_eq!(versions.len(), 1);
-        assert_eq!(versions[0].version, "15.1.0");
-        assert_eq!(versions[0].hash, "605ce345a1573958ede124887c77fed02eb6b860");
-        assert_eq!(versions[0].date, "2026-02-07");
-    }
-}

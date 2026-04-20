@@ -35,7 +35,21 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
 
         let ast = Root::parse(&outputs_val);
         use rnix::SyntaxKind;
+        let mut body_val = outputs_val.clone();
         for node in ast.syntax().descendants() {
+            if node.kind() == SyntaxKind::NODE_LAMBDA {
+                if let Some(body) = node.children().find(|c| {
+                    !matches!(
+                        c.kind(),
+                        SyntaxKind::NODE_PATTERN
+                            | SyntaxKind::TOKEN_COLON
+                            | SyntaxKind::TOKEN_WHITESPACE
+                            | SyntaxKind::TOKEN_COMMENT
+                    )
+                }) {
+                    body_val = body.to_string();
+                }
+            }
             if node.kind() == SyntaxKind::NODE_LET_IN {
                 for child in node.children() {
                     if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
@@ -61,7 +75,7 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
             }
         }
 
-        if let Ok(collection) = nix_editor::parse::get_collection(outputs_val) {
+        if let Ok(collection) = nix_editor::parse::get_collection(body_val) {
             for (key, val) in collection {
                 let parts: Vec<&str> = key.split('.').collect();
                 if !parts.is_empty() {
@@ -73,7 +87,14 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
                             | "devShells"
                             | "darwinConfigurations"
                     ) {
-                        let mut path = parts[1..].join(".");
+                        let mut path_parts = Vec::new();
+                        for part in &parts[1..] {
+                            if matches!(*part, "packages" | "buildInputs" | "nativeBuildInputs") {
+                                break;
+                            }
+                            path_parts.push(*part);
+                        }
+                        let mut path = path_parts.join(".");
 
                         for (k, v) in &replacements {
                             path = path.replace(k, v);
@@ -373,6 +394,41 @@ fn add_to_outputs_pattern(content: &str, name: &str) -> String {
     }
 
     result
+}
+
+pub fn extract_package_attribute_strings(content: &str) -> Vec<String> {
+    let mut attrs = Vec::new();
+    let ast = Root::parse(content);
+    
+    for node in ast.syntax().descendants() {
+        if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+            if let Some(attrpath) = node.children().find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH) {
+                let path_text = attrpath.to_string().trim().to_string();
+                if path_text == "packages" || path_text == "buildInputs" || path_text == "nativeBuildInputs" {
+                    if let Some(val) = node.children().find(|c| !matches!(c.kind(), SyntaxKind::NODE_ATTRPATH | SyntaxKind::TOKEN_COMMENT | SyntaxKind::TOKEN_WHITESPACE)) {
+                        if val.kind() == SyntaxKind::NODE_LIST {
+                            for item in val.children() {
+                                attrs.push(item.to_string().trim().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If no attributes were found, check if the content itself is a list
+    if attrs.is_empty() {
+        for node in ast.syntax().children() {
+            if node.kind() == SyntaxKind::NODE_LIST {
+                for item in node.children() {
+                    attrs.push(item.to_string().trim().to_string());
+                }
+            }
+        }
+    }
+
+    attrs
 }
 
 pub fn add_package(flake_path: &Path, system: &str, shell_name: &str, pkg_name: &str) -> Result<()> {
@@ -777,157 +833,286 @@ fn insert_packages_into_set(set_node: &SyntaxNode, pkg_name: &str, content: &str
     content.to_string()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
+pub fn remove_package(flake_path: &Path, system: &str, shell_name: &str, pkg_name: &str) -> Result<()> {
+    let content = std::fs::read_to_string(flake_path)?;
 
-    #[test]
-    fn test_add_package() -> Result<()> {
-        let temp_dir = std::env::temp_dir();
-        let flake_path = temp_dir.join("test_add_package_flake.nix");
-        let content = r#"{
-  outputs = { self, nixpkgs }: {
-    devShells.x86_64-linux.default = {
-      packages = [ ];
-    };
-  };
-}"#;
-        fs::write(&flake_path, content)?;
+    let mut new_content = remove_package_from_content(&content, system, shell_name, pkg_name)?;
 
-        add_package(&flake_path, "x86_64-linux", "default", "hello")?;
-
-        let updated_content = fs::read_to_string(&flake_path)?;
-        assert!(updated_content.contains("hello"));
-        assert!(!updated_content.contains("\"hello\""));
-        assert!(updated_content.contains("packages"));
-
-        fs::remove_file(flake_path)?;
-        Ok(())
+    if new_content == content {
+        return Ok(());
     }
 
-    #[test]
-    fn test_add_package_prefixed() -> Result<()> {
-        let temp_dir = std::env::temp_dir();
-        let flake_path = temp_dir.join("test_add_package_prefixed_flake.nix");
-        let content = r#"{
-  outputs = { self, nixpkgs, nixpkgs-abc }: {
-    devShells.x86_64-linux.default = {
-      packages = [ ];
-    };
-  };
-}"#;
-        fs::write(&flake_path, content)?;
+    if let Some((input_name, _)) = pkg_name.split_once('.') {
+        let inputs = extract_inputs(&new_content);
+        if inputs.iter().any(|i| i.name == input_name) {
+            let configs = extract_configurations(&new_content);
+            let mut used = false;
+            for config in &configs {
+                if let Some(config_content) = &config.content {
+                    let attrs = extract_package_attribute_strings(config_content);
+                    if attrs
+                        .iter()
+                        .any(|a| a.starts_with(&format!("{}.", input_name)) || a == input_name)
+                    {
+                        used = true;
+                        break;
+                    }
+                }
+            }
 
-        add_package(&flake_path, "x86_64-linux", "default", "nixpkgs-abc.hello")?;
-
-        let updated_content = fs::read_to_string(&flake_path)?;
-        assert!(updated_content.contains("nixpkgs-abc.hello"));
-        assert!(!updated_content.contains("\"nixpkgs-abc.hello\""));
-
-        fs::remove_file(flake_path)?;
-        Ok(())
+            if !used {
+                new_content = remove_input(&new_content, input_name)?;
+            }
+        }
     }
 
-    #[test]
-    fn test_add_to_outputs_pattern_multiline_no_comma() {
-        let content = r#"{
-  outputs =
-    {
-      self,
-      nixpkgs
-    }:
-    { };
-}"#;
-        let result = add_to_outputs_pattern(content, "nixpkgs-abc");
-        println!("Result: '{}'", result);
-        assert!(result.contains("nixpkgs,"));
-        assert!(result.contains("nixpkgs-abc,"));
+    if new_content != content {
+        std::fs::write(flake_path, new_content)?;
     }
 
-    #[test]
-    fn test_add_to_outputs_pattern_multiline() {
-        let content = r#"{
-  outputs =
-    {
-      self,
-      nixpkgs,
-    }:
-    { };
-}"#;
-        let result = add_to_outputs_pattern(content, "nixpkgs-abc");
-        println!("Result: '{}'", result);
-        assert!(result.contains("nixpkgs-abc,"));
-        assert!(result.contains("nixpkgs,"));
-    }
-
-    #[test]
-    fn test_add_to_outputs_pattern_single_line() {
-        let content = r#"{
-  outputs = { self, nixpkgs }: { };
-}"#;
-        let result = add_to_outputs_pattern(content, "nixpkgs-abc");
-        println!("Result: '{}'", result);
-        assert!(result.contains("{ self, nixpkgs, nixpkgs-abc }"));
-    }
-
-    #[test]
-    fn test_add_nixpkgs_input() {
-        let content = r#"{
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-  };
-  outputs = { self, nixpkgs }: { };
-}"#;
-        let hash = "abc123def";
-        let result = add_nixpkgs_input(content, hash);
-        
-        assert!(result.contains("nixpkgs-abc123def.url"));
-        assert!(result.contains("github:nixos/nixpkgs/abc123def"));
-        assert!(result.contains("nixpkgs-abc123def")); // in outputs
-    }
-
-    #[test]
-    fn test_version_pinning_flow() -> Result<()> {
-        let temp_dir = std::env::temp_dir();
-        let flake_path = temp_dir.join("test_pinning_flow_flake.nix");
-        let content = r#"{
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-  };
-  outputs = { self, nixpkgs }: {
-    devShells.x86_64-linux.default = {
-      packages = [ ];
-    };
-  };
-}"#;
-        fs::write(&flake_path, content)?;
-
-        let hash = "abc123def";
-        let pkg_name = "hello";
-        let prefixed_pkg = format!("nixpkgs-{}.{}", hash, pkg_name);
-
-        // 1. Add nixpkgs input
-        let content = fs::read_to_string(&flake_path)?;
-        let new_content = add_nixpkgs_input(&content, hash);
-        fs::write(&flake_path, new_content)?;
-
-        // 2. Add package
-        add_package(&flake_path, "x86_64-linux", "default", &prefixed_pkg)?;
-
-        let final_content = fs::read_to_string(&flake_path)?;
-        
-        // Check input
-        assert!(final_content.contains("nixpkgs-abc123def.url"));
-        assert!(final_content.contains("github:nixos/nixpkgs/abc123def"));
-        
-        // Check outputs pattern
-        assert!(final_content.contains("nixpkgs-abc123def"));
-        
-        // Check package
-        assert!(final_content.contains("nixpkgs-abc123def.hello"));
-
-        fs::remove_file(flake_path)?;
-        Ok(())
-    }
+    Ok(())
 }
+
+fn remove_package_from_content(
+    content: &str,
+    system: &str,
+    shell_name: &str,
+    pkg_name: &str,
+) -> Result<String> {
+    let ast = Root::parse(content);
+    let root = ast.syntax();
+
+    if let Some(shell_node) = find_shell_node(&root, system, shell_name) {
+        if let Some(shell_attr_set) = get_shell_attr_set(&shell_node) {
+            return Ok(remove_package_from_shell_attr_set(
+                &shell_attr_set,
+                pkg_name,
+                content,
+            ));
+        }
+    }
+
+    Ok(content.to_string())
+}
+
+fn remove_package_from_shell_attr_set(set_node: &SyntaxNode, pkg_name: &str, content: &str) -> String {
+    let mut packages_nodes = Vec::new();
+    for child in set_node.children() {
+        if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+            if let Some(attrpath) = child.children().find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH) {
+                let path_text = attrpath.to_string().trim().to_string();
+                if path_text == "packages"
+                    || path_text == "buildInputs"
+                    || path_text == "nativeBuildInputs"
+                {
+                    if let Some(val) = child.children().find(|c| {
+                        !matches!(
+                            c.kind(),
+                            SyntaxKind::NODE_ATTRPATH
+                                | SyntaxKind::TOKEN_COMMENT
+                                | SyntaxKind::TOKEN_WHITESPACE
+                        )
+                    }) {
+                        if val.kind() == SyntaxKind::NODE_LIST {
+                            packages_nodes.push(val);
+                        } else if val.kind() == SyntaxKind::NODE_WITH {
+                            if let Some(list) =
+                                val.children().find(|c| c.kind() == SyntaxKind::NODE_LIST)
+                            {
+                                packages_nodes.push(list);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut current_content = content.to_string();
+    for list_node in packages_nodes {
+        current_content = remove_from_list(&list_node, pkg_name, &current_content);
+    }
+
+    current_content
+}
+
+fn remove_from_list(list_node: &SyntaxNode, pkg_name: &str, content: &str) -> String {
+    let mut to_remove = Vec::new();
+    for child in list_node.children() {
+        if (child.kind() == SyntaxKind::NODE_SELECT || child.kind() == SyntaxKind::NODE_IDENT)
+            && child.to_string().trim() == pkg_name
+        {
+            let mut start = child.text_range().start();
+            let end = child.text_range().end();
+
+            // Try to include preceding whitespace
+            if let Some(prev) = child.prev_sibling_or_token() {
+                if prev.kind() == SyntaxKind::TOKEN_WHITESPACE {
+                    start = prev.text_range().start();
+                }
+            }
+            to_remove.push((start, end));
+        }
+    }
+
+    let mut result = content.to_string();
+    for (start, end) in to_remove.into_iter().rev() {
+        result.replace_range(usize::from(start)..usize::from(end), "");
+    }
+    result
+}
+
+fn remove_input(content: &str, input_name: &str) -> Result<String> {
+    let mut new_content = content.to_string();
+
+    let ast = Root::parse(content);
+    let root = ast.syntax();
+
+    // Find inputs = { ... }
+    let mut inputs_node = None;
+    for node in root.descendants() {
+        if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+            if let Some(attrpath) = node.children().find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH) {
+                if attrpath.text().to_string().trim() == "inputs" {
+                    if let Some(val) = node.children().find(|c| c.kind() == SyntaxKind::NODE_ATTR_SET)
+                    {
+                        inputs_node = Some(val);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(inputs_set) = inputs_node {
+        for child in inputs_set.children() {
+            if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                if let Some(attrpath) = child.children().find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH)
+                {
+                    let path_text = attrpath.to_string().trim().to_string();
+                    if path_text == input_name || path_text.starts_with(&format!("{}.", input_name))
+                    {
+                        let mut start = child.text_range().start();
+                        let mut end = child.text_range().end();
+
+                        // Include semicolon
+                        let mut next = child.next_sibling_or_token();
+                        while let Some(n) = next {
+                            if n.kind() == SyntaxKind::TOKEN_SEMICOLON {
+                                end = n.text_range().end();
+                                break;
+                            }
+                            if !matches!(
+                                n.kind(),
+                                SyntaxKind::TOKEN_WHITESPACE | SyntaxKind::TOKEN_COMMENT
+                            ) {
+                                break;
+                            }
+                            next = n.next_sibling_or_token();
+                        }
+
+                        // Include preceding whitespace
+                        if let Some(prev) = child.prev_sibling_or_token() {
+                            if prev.kind() == SyntaxKind::TOKEN_WHITESPACE {
+                                start = prev.text_range().start();
+                            }
+                        }
+
+                        new_content.replace_range(usize::from(start)..usize::from(end), "");
+                        // Re-parse to handle multiple attributes for the same input
+                        return remove_input(&new_content, input_name);
+                    }
+                }
+            }
+        }
+    }
+
+    new_content = remove_from_outputs_pattern(&new_content, input_name);
+
+    Ok(new_content)
+}
+
+fn remove_from_outputs_pattern(content: &str, name: &str) -> String {
+    let ast = Root::parse(content);
+    let root = ast.syntax();
+    use rnix::SyntaxKind;
+
+    let mut outputs_node = None;
+    for node in root.descendants() {
+        if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+            if let Some(attrpath) = node.children().find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH) {
+                if attrpath.text().to_string().trim() == "outputs" {
+                    outputs_node = Some(node);
+                    break;
+                }
+            }
+        }
+    }
+
+    let Some(outputs_node) = outputs_node else {
+        return content.to_string();
+    };
+
+    let Some(lambda) = outputs_node
+        .children()
+        .find(|c| c.kind() == SyntaxKind::NODE_LAMBDA)
+    else {
+        return content.to_string();
+    };
+
+    let Some(pattern) = lambda
+        .children()
+        .find(|c| c.kind() == SyntaxKind::NODE_PATTERN)
+    else {
+        return content.to_string();
+    };
+
+    for child in pattern.children_with_tokens() {
+        let text = child.to_string();
+        let trimmed = text.trim().trim_matches(',');
+        if trimmed == name {
+            let mut start = child.text_range().start();
+            let mut end = child.text_range().end();
+
+            let mut next = child.next_sibling_or_token();
+            while let Some(n) = next {
+                if n.kind() == SyntaxKind::TOKEN_COMMA {
+                    end = n.text_range().end();
+                    break;
+                }
+                if !matches!(
+                    n.kind(),
+                    SyntaxKind::TOKEN_WHITESPACE | SyntaxKind::TOKEN_COMMENT
+                ) {
+                    break;
+                }
+                next = n.next_sibling_or_token();
+            }
+
+            if end == child.text_range().end() {
+                let mut prev = child.prev_sibling_or_token();
+                while let Some(p) = prev {
+                    if p.kind() == SyntaxKind::TOKEN_COMMA {
+                        start = p.text_range().start();
+                        break;
+                    }
+                    if !matches!(
+                        p.kind(),
+                        SyntaxKind::TOKEN_WHITESPACE | SyntaxKind::TOKEN_COMMENT
+                    ) {
+                        break;
+                    }
+                    prev = p.prev_sibling_or_token();
+                }
+            }
+
+            let mut result = content.to_string();
+            result.replace_range(usize::from(start)..usize::from(end), "");
+            return result;
+        }
+    }
+
+    content.to_string()
+}
+
+

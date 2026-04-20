@@ -179,16 +179,42 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
             KeyCode::Char('a') if app.ui.selected_index == 2 || (app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1) => Some(Action::OpenAddPackage),
             KeyCode::Char('a') if app.ui.selected_index == 3 => Some(Action::OpenAddInput),
             KeyCode::Char('s') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => Some(Action::StartShell(app.shell_packages.clone())),
-            KeyCode::Char('x') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => {
+            KeyCode::Char('d') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => {
                 if let Some(i) = app.ui.shell_package_list_state.selected() {
                     Some(Action::RemovePackage(i))
                 } else {
                     None
                 }
             }
+            KeyCode::Char('d') if app.ui.selected_index == 2 => {
+                if let Some(i) = app.ui.package_table_state.selected() {
+                    if i > 0 {
+                        let mut pkgs: Vec<_> = app.domain.package_info.keys().collect();
+                        pkgs.sort();
+                        if let Some(pkg_name) = pkgs.get(i - 1) {
+                            if let Some((_, _, _, source)) = app.domain.package_info.get(*pkg_name) {
+                                let full_name = if source.is_empty() {
+                                    pkg_name.to_string()
+                                } else {
+                                    format!("{}.{}", source, pkg_name)
+                                };
+                                return Some(Action::RemoveFlakePackage(full_name));
+                            }
+                        }
+                    }
+                }
+                None
+            }
             KeyCode::Char('m') => Some(Action::SwitchMode),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveDown),
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveUp),
+            KeyCode::Char('i') if app.ui.selected_index == 2 => Some(Action::TogglePackageDetails),
+            KeyCode::Char('j') if app.ui.selected_index == 2 => Some(Action::MovePackageSelectionDown),
+            KeyCode::Char('k') if app.ui.selected_index == 2 => Some(Action::MovePackageSelectionUp),
+            KeyCode::Char('J') => Some(Action::MoveDown),
+            KeyCode::Char('K') => Some(Action::MoveUp),
+            KeyCode::Down => Some(Action::MoveDown),
+            KeyCode::Up => Some(Action::MoveUp),
+            KeyCode::Char('j') => Some(Action::MoveDown),
+            KeyCode::Char('k') => Some(Action::MoveUp),
             _ => None,
         };
     }

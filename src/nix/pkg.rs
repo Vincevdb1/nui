@@ -8,6 +8,7 @@ pub struct Package {
     pub description: String,
     pub version: Option<String>,
     pub is_unfree: bool,
+    pub source_input: Option<String>,
 }
 
 impl Package {
@@ -15,7 +16,7 @@ impl Package {
         flake_path: &str,
         config_type: &str,
         config_name: &str,
-    ) -> Result<HashMap<String, (String, String, bool)>, String> {
+    ) -> Result<HashMap<String, (String, String, bool, String)>, String> {
         let mut results = HashMap::new();
 
         let target_attr = if config_type == "devShells" {
@@ -103,7 +104,7 @@ impl Package {
                     } else {
                         pkg.name
                     };
-                    results.insert(key, (pkg.description, pkg.version, pkg.is_unfree));
+                    results.insert(key, (pkg.description, pkg.version, pkg.is_unfree, String::new()));
                 }
                 crate::log_output(
                     "Nix Output",

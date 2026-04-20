@@ -82,11 +82,11 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     }
 
     let footer_text = if app.mode == crate::state::Mode::Shell {
-        "a: Add | x: Remove | s: Start Shell | m: Switch Mode | j/k: Select | q: Quit"
+        "a: Add | d: Remove | s: Start Shell | m: Switch Mode | j/k: Select | q: Quit"
     } else {
         match app.ui.selected_index {
             1 => "Tab: Switch focus | m: Switch Mode | 1-5: Select tab | q: Quit",
-            2 => "a: Add Package | m: Switch Mode | j/k: Select File | Tab: Switch focus | 1-5: Select tab | q: Quit",
+            2 => "a: Add | d: Remove | i: Info | m: Mode | Shift-j/k: Select | j/k: Navigate pkgs | Tab: Focus | q: Quit",
             3 => "a: Add Input | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
             4 => "j/k: Select Config | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
             5 => "j/k: Scroll Logs | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
@@ -122,12 +122,43 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         );
     }
 
-    if app.ui.is_showing_package_details
-        && let Some(result) = app
-            .domain
-            .package_search_results
-            .get(app.ui.package_search_state.selected().unwrap_or(0))
-    {
-        popups::add_package::render_details(frame, result);
+    if app.ui.is_showing_package_details {
+        if app.ui.is_adding_package {
+            if let Some(result) = app
+                .domain
+                .package_search_results
+                .get(app.ui.package_search_state.selected().unwrap_or(0))
+            {
+                popups::add_package::render_details(frame, result);
+            }
+        } else if app.ui.selected_index == 2 {
+            let mut all_packages = Vec::new();
+            for (name, (description, version, is_unfree, source_input)) in &app.domain.package_info {
+                all_packages.push(crate::state::domain::SearchResult {
+                    name: name.clone(),
+                    description: description.clone(),
+                    versions: vec![crate::state::domain::ChannelVersion {
+                        version: version.clone(),
+                        channel: "current".to_string(),
+                    }],
+                    platforms: Vec::new(),
+                    is_unfree: *is_unfree,
+                    source_input: if source_input.is_empty() {
+                        None
+                    } else {
+                        Some(source_input.clone())
+                    },
+                });
+            }
+            all_packages.sort_by(|a, b| a.name.cmp(&b.name));
+
+            if let Some(i) = app.ui.package_table_state.selected() {
+                if i > 0 {
+                    if let Some(result) = all_packages.get(i - 1) {
+                        popups::add_package::render_details(frame, result);
+                    }
+                }
+            }
+        }
     }
 }

@@ -261,6 +261,74 @@ impl AppState {
                 }
                 _ => {}
             },
+            Action::MovePackageSelectionDown => {
+                let count = self.domain.package_info.len();
+                if count > 0 {
+                    let i = match self.ui.package_table_state.selected() {
+                        Some(i) => {
+                            if i >= count {
+                                1
+                            } else {
+                                i + 1
+                            }
+                        }
+                        None => 1,
+                    };
+                    self.ui.package_table_state.select(Some(i));
+                }
+            }
+            Action::MovePackageSelectionUp => {
+                let count = self.domain.package_info.len();
+                if count > 0 {
+                    let i = match self.ui.package_table_state.selected() {
+                        Some(i) => {
+                            if i <= 1 {
+                                count
+                            } else {
+                                i - 1
+                            }
+                        }
+                        None => 1,
+                    };
+                    self.ui.package_table_state.select(Some(i));
+                }
+            }
+            Action::RemoveFlakePackage(pkg_name) => {
+                if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
+                    let flake_path = file.path.clone();
+                    if let Some(config) = self
+                        .domain
+                        .configurations
+                        .get(self.ui.selected_configuration_index)
+                    {
+                        let parts: Vec<&str> = config.path.split('.').collect();
+                        let system = parts.get(0).copied().unwrap_or("x86_64-linux").to_string();
+                        let shell_name = parts.get(1).copied().unwrap_or("default").to_string();
+
+                        let tx = self.tx.clone();
+                        let pkg_name = pkg_name.clone();
+                        std::thread::spawn(move || {
+                            if let Err(e) = crate::nix::flake::remove_package(
+                                &flake_path,
+                                &system,
+                                &shell_name,
+                                &pkg_name,
+                            ) {
+                                crate::log_output(
+                                    "Error",
+                                    format!("Failed to remove package: {}", e),
+                                );
+                            } else {
+                                crate::log_output(
+                                    "Success",
+                                    format!("Removed {} from {}", pkg_name, shell_name),
+                                );
+                            }
+                            let _ = tx.send(Action::RefreshContext);
+                        });
+                    }
+                }
+            }
             Action::OpenAddPackage => {
                 self.ui.is_adding_package = true;
                 self.ui.is_selecting_version = false;
@@ -507,8 +575,31 @@ impl AppState {
                             format!("Successfully fetched {} package details", results.len()),
                         );
                         self.ui.package_fetch_error = None;
-                        for (name, details) in results {
-                            self.domain.package_info.insert(name, details);
+
+                        let mut source_map = HashMap::new();
+                        if let Some(config) = self
+                            .domain
+                            .configurations
+                            .get(self.ui.selected_configuration_index)
+                        {
+                            if let Some(content) = &config.content {
+                                let attrs =
+                                    crate::nix::flake::extract_package_attribute_strings(content);
+                                for attr in attrs {
+                                    if let Some(dot_idx) = attr.find('.') {
+                                        let source = &attr[..dot_idx];
+                                        let pkg_name = &attr[dot_idx + 1..];
+                                        source_map.insert(pkg_name.to_string(), source.to_string());
+                                    }
+                                }
+                            }
+                        }
+
+                        for (name, (desc, ver, unfree, _)) in results {
+                            let source = source_map.get(&name).cloned().unwrap_or_default();
+                            self.domain
+                                .package_info
+                                .insert(name, (desc, ver, unfree, source));
                         }
                     }
                     Err(e) => {
@@ -763,6 +854,7 @@ impl AppState {
                                 versions: Vec::new(),
                                 platforms: Vec::new(),
                                 is_unfree: false,
+                                source_input: None,
                             }
                         });
 

@@ -5,12 +5,13 @@ use throbber_widgets_tui::Throbber;
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let mut all_packages = Vec::new();
 
-    for (name, (description, version, is_unfree)) in &app.domain.package_info {
+    for (name, (description, version, is_unfree, source_input)) in &app.domain.package_info {
         all_packages.push(crate::nix::Package {
             name: name.clone(),
             description: description.clone(),
             version: Some(version.clone()),
             is_unfree: *is_unfree,
+            source_input: if source_input.is_empty() { None } else { Some(source_input.clone()) },
         });
     }
 
@@ -104,7 +105,8 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
             ])
             .style(Style::default().add_modifier(Modifier::BOLD)),
         )
-        .column_spacing(0);
+        .column_spacing(0)
+        .row_highlight_style(Style::default().bg(Color::Cyan).fg(Color::Black));
 
-    frame.render_widget(table, area);
+    frame.render_stateful_widget(table, area, &mut app.ui.package_table_state);
 }

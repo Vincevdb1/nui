@@ -27,6 +27,7 @@ pub struct UiState {
     pub version_fetch_error: Option<String>,
     pub version_list_state: ListState,
     pub selected_package_name: Option<String>,
+    pub package_table_state: ratatui::widgets::TableState,
 }
 
 impl Default for UiState {
@@ -56,6 +57,7 @@ impl Default for UiState {
             version_fetch_error: None,
             version_list_state: ListState::default(),
             selected_package_name: None,
+            package_table_state: ratatui::widgets::TableState::default(),
         }
     }
 }

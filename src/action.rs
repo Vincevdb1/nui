@@ -13,6 +13,8 @@ pub enum Action {
     // Selection navigation (Main screen)
     MoveDown,
     MoveUp,
+    MovePackageSelectionDown,
+    MovePackageSelectionUp,
 
     // Popups
     OpenAddPackage,
@@ -42,7 +44,7 @@ pub enum Action {
     Log(LogEntry),
     SetSuggestions(Vec<(String, String)>),
     SetPackageSearchResults(Result<Vec<SearchResult>, String>),
-    SetPackageDetails(Result<HashMap<String, (String, String, bool)>, String>),
+    SetPackageDetails(Result<HashMap<String, (String, String, bool, String)>, String>),
     SetVersions(Result<Vec<VersionInfo>, String>),
 
     // Context / State Refresh
@@ -57,6 +59,7 @@ pub enum Action {
     StartShell(Vec<String>),
     UpdateShellPackages(Vec<String>),
     RemovePackage(usize),
+    RemoveFlakePackage(String),
 
     // Version Selection
     SelectVersion(VersionInfo),
