@@ -70,6 +70,8 @@ impl AppState {
                 nix_files,
                 inputs,
                 configurations,
+                nh_version: domain::get_tool_version("nh"),
+                nxv_version: domain::get_tool_version("nxv"),
                 ..Default::default()
             },
             should_quit: false,

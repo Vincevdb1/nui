@@ -76,12 +76,7 @@ struct NixSearchPackage {
 pub fn nix_search(query: String, rev: String) -> Result<Vec<NHPackage>, String> {
     let flake_url = format!("github:NixOS/nixpkgs/{}", rev);
     let output = std::process::Command::new("nix")
-        .args([
-            "search",
-            "--json",
-            &flake_url,
-            &query,
-        ])
+        .args(["search", "--json", &flake_url, &query])
         .output()
         .map_err(|e| format!("Failed to execute nix search: {}", e))?;
 
@@ -130,11 +125,7 @@ pub fn extract_upstream_channel(input: &Input) -> String {
 pub fn fetch_accurate_version(rev: String, attribute: String) -> Option<String> {
     let flake_url = format!("github:NixOS/nixpkgs/{}#{}", rev, attribute);
     let output = std::process::Command::new("nix")
-        .args([
-            "eval",
-            "--json",
-            &format!("{}.version", flake_url),
-        ])
+        .args(["eval", "--json", &format!("{}.version", flake_url)])
         .output()
         .ok()?;
 
@@ -177,15 +168,45 @@ pub fn fetch_package_versions(pkg: &str) -> Result<Vec<VersionInfo>, String> {
     Ok(results
         .into_iter()
         .map(|r| {
-            let is_unfree = r.license.as_ref().map(|l| l.to_lowercase().contains("unfree")).unwrap_or(false);
+            let is_unfree = r
+                .license
+                .as_ref()
+                .map(|l| l.to_lowercase().contains("unfree"))
+                .unwrap_or(false);
             VersionInfo {
                 version: r.version,
                 hash: r.last_commit_hash,
-                date: r.last_commit_date.split('T').next().unwrap_or("").to_string(),
+                date: r
+                    .last_commit_date
+                    .split('T')
+                    .next()
+                    .unwrap_or("")
+                    .to_string(),
                 is_unfree,
             }
         })
         .collect())
+}
+
+pub fn get_tool_version(cmd: &str) -> Option<String> {
+    let output = std::process::Command::new(cmd)
+        .arg("--version")
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let first_line = stdout.lines().next()?;
+        let parts: Vec<&str> = first_line.split_whitespace().collect();
+
+        if parts.len() >= 2 && parts[0].to_lowercase() == cmd.to_lowercase() {
+            Some(parts[1].to_string())
+        } else {
+            // Fallback to the last word if it doesn't start with the command name
+            Some(parts.last()?.to_string())
+        }
+    } else {
+        None
+    }
 }
 
 #[derive(Default)]
@@ -201,5 +222,6 @@ pub struct DomainData {
     pub pending_fetches: HashSet<String>,
     pub package_versions: Vec<VersionInfo>,
     pub package_updates: HashMap<String, String>,
+    pub nh_version: Option<String>,
+    pub nxv_version: Option<String>,
 }
-

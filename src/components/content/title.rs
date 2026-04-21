@@ -1,7 +1,6 @@
-
 use ratatui::{prelude::*, widgets::*};
 
-pub fn render(frame: &mut Frame, area: Rect) {
+pub fn render(frame: &mut Frame, area: Rect, is_focused: bool, nh_version: Option<String>, nxv_version: Option<String>) {
     let version = env!("CARGO_PKG_VERSION");
     let mut text = Text::from(vec![
         Line::from(r"             _ ").cyan().bold(),
@@ -22,6 +21,23 @@ pub fn render(frame: &mut Frame, area: Rect) {
         Line::from("NUI - Nix User Interface").bold().cyan(),
         Line::from("A terminal interface for managing Nix flakes.").gray(),
         Line::from(""),
+    ]);
+
+    if let Some(v) = nh_version {
+        text.lines.push(Line::from(vec![
+            Span::raw("nh: ").gray(),
+            Span::raw(v).dark_gray(),
+        ]));
+    }
+    if let Some(v) = nxv_version {
+        text.lines.push(Line::from(vec![
+            Span::raw("nxv: ").gray(),
+            Span::raw(v).dark_gray(),
+        ]));
+    }
+
+    text.lines.extend(vec![
+        Line::from(""),
         Line::from("Thank you for using NUI").bold(),
         Line::from(""),
         Line::from(vec!["Github: ".into(), "https://github.com/Vincevdb1/nui".underlined()]).fg(Color::DarkGray),
@@ -29,7 +45,15 @@ pub fn render(frame: &mut Frame, area: Rect) {
         Line::from("󰿃 MIT License").italic().fg(Color::DarkGray),
     ]);
 
-    let p = Paragraph::new(text).wrap(Wrap { trim: false });
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(if is_focused {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default()
+        });
+
+    let p = Paragraph::new(text).block(block).wrap(Wrap { trim: false });
 
     frame.render_widget(p, area);
 }

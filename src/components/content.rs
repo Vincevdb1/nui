@@ -55,7 +55,13 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
             if app.mode == crate::state::Mode::Shell {
                 shell::render(app, frame, inner_area);
             } else {
-                title::render(frame, inner_area);
+                title::render(
+                    frame,
+                    inner_area,
+                    app.ui.selected_index == 1,
+                    app.domain.nh_version.clone(),
+                    app.domain.nxv_version.clone(),
+                );
             }
         }
         2 | 4 => packages::render(app, frame, inner_area),
