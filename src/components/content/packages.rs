@@ -75,7 +75,15 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         };
 
         let current_version = pkg.version.clone().unwrap_or_default();
-        let version_line = if let Some(latest) = app.domain.package_updates.get(&pkg.name) {
+        let latest = app.domain.package_updates.get(&pkg.name)
+            .or_else(|| {
+                // Fuzzy match: if we have an update for "jetbrains.datagrip" and we are "datagrip"
+                app.domain.package_updates.iter()
+                    .find(|(attr, _)| attr.ends_with(&format!(".{}", pkg.name)))
+                    .map(|(_, v)| v)
+            });
+
+        let version_line = if let Some(latest) = latest {
             if latest != &current_version {
                 Line::from(vec![
                     Span::raw(format!(" {}", current_version)),
@@ -84,13 +92,8 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
             } else {
                 Line::from(format!(" {}", current_version))
             }
-        } else if app.mode == crate::state::Mode::Shell {
-            Line::from(format!(" {}", current_version))
         } else {
-            Line::from(vec![
-                Span::raw(format!(" {}", current_version)),
-                Span::styled(" (󰚰 ...)", Style::default().fg(Color::DarkGray)),
-            ])
+            Line::from(format!(" {}", current_version))
         };
 
         rows.push(Row::new(vec![

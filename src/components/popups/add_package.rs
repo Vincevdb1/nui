@@ -7,6 +7,8 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 
+use std::collections::HashMap;
+
 pub fn render(
     frame: &mut Frame,
     query: &str,
@@ -18,6 +20,7 @@ pub fn render(
     is_fetching_versions: bool,
     versions: &[VersionInfo],
     version_list_state: &mut ListState,
+    installed_packages: &HashMap<String, (String, String, bool, String)>,
 ) {
     let area = centered_rect(80, 70, frame.area());
     frame.render_widget(Clear, area);
@@ -62,6 +65,7 @@ pub fn render(
             results,
             channels,
             list_state,
+            installed_packages,
         );
     }
 
@@ -81,6 +85,7 @@ fn render_package_search(
     results: &[SearchResult],
     channels: &[String],
     list_state: &mut ListState,
+    installed_packages: &HashMap<String, (String, String, bool, String)>,
 ) {
     let list_title = if is_searching {
         " Searching... "
@@ -121,7 +126,13 @@ fn render_package_search(
                     res.versions
                         .iter()
                         .find(|v| v.channel == *channel)
-                        .map(|v| v.version.len())
+                        .map(|v| {
+                            let mut w = v.version.len();
+                            if let Some(lv) = &v.locked_version {
+                                w += lv.len() + 3; // " (v)"
+                            }
+                            w + 4 // +4 for (󰚰 )
+                        })
                         .unwrap_or(0)
                 })
                 .max()
@@ -164,11 +175,26 @@ fn render_package_search(
                     Span::raw("  ")
                 };
 
+                // Find installed version
+                let installed_pkg = installed_packages.get(&res.name)
+                    .or_else(|| {
+                        // Fuzzy match installed packages
+                        installed_packages.iter()
+                            .find(|(name, _)| res.name.ends_with(&format!(".{}", name)))
+                            .map(|(_, v)| v)
+                    });
+                
+                let installed_version = installed_pkg.map(|(_, ver, _, _)| ver.as_str());
+
                 let mut spans = vec![
                     unfree_marker,
                     Span::styled(
                         format!("{:width$}", res.name, width = max_name_width - 1),
-                        Style::default().add_modifier(Modifier::BOLD),
+                        if installed_version.is_some() {
+                            Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan)
+                        } else {
+                            Style::default().add_modifier(Modifier::BOLD)
+                        },
                     ),
                 ];
 
@@ -179,8 +205,19 @@ fn render_package_search(
 
                     if let Some(v) = version_opt {
                         let color = get_channel_color(channel);
+                        
+                        let version_str = if let Some(lv) = &v.locked_version {
+                            if lv != &v.version {
+                                format!("{} (󰌾 {})", v.version, lv)
+                            } else {
+                                v.version.clone()
+                            }
+                        } else {
+                            v.version.clone()
+                        };
+
                         spans.push(Span::styled(
-                            format!("{:width$}", v.version, width = width),
+                            format!("{:width$}", version_str, width = width),
                             Style::default().fg(color),
                         ));
                     } else {

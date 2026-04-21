@@ -25,6 +25,7 @@ pub struct NHPackage {
 pub struct ChannelVersion {
     pub version: String,
     pub channel: String,
+    pub locked_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,6 +112,10 @@ pub fn extract_channel(input: &Input) -> String {
     if let Some(rev) = &input.rev {
         return rev.clone();
     }
+    extract_upstream_channel(input)
+}
+
+pub fn extract_upstream_channel(input: &Input) -> String {
     let url = &input.url;
     if url.contains("nixpkgs") {
         for part in url.split('/') {

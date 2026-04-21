@@ -119,6 +119,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             app.ui.is_fetching_versions,
             &app.domain.package_versions,
             &mut app.ui.version_list_state,
+            &app.domain.package_info,
         );
     }
 
@@ -140,6 +141,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                     versions: vec![crate::state::domain::ChannelVersion {
                         version: version.clone(),
                         channel: "current".to_string(),
+                        locked_version: None,
                     }],
                     platforms: Vec::new(),
                     is_unfree: *is_unfree,

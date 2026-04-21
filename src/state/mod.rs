@@ -584,9 +584,11 @@ impl AppState {
                                                             result.name.clone(),
                                                         )
                                                     {
+                                                        let channel = domain::extract_channel(input);
                                                         let _ = tx.send(
-                                                            Action::UpdatePackageVersion(
+                                                            Action::SetLockedVersion(
                                                                 result.name.clone(),
+                                                                channel,
                                                                 version,
                                                             ),
                                                         );
@@ -616,6 +618,17 @@ impl AppState {
                                 || cv.channel.len() == 40
                             {
                                 cv.version = version.clone();
+                            }
+                        }
+                    }
+                }
+            }
+            Action::SetLockedVersion(attribute, channel, version) => {
+                for result in &mut self.domain.package_search_results {
+                    if result.name == attribute {
+                        for cv in &mut result.versions {
+                            if cv.channel == channel {
+                                cv.locked_version = Some(version.clone());
                             }
                         }
                     }
@@ -880,7 +893,7 @@ impl AppState {
             let mut targets = Vec::new();
             for input in &self.domain.inputs {
                 if input.url.contains("nixpkgs") {
-                    targets.push(domain::extract_channel(input));
+                    targets.push(domain::extract_upstream_channel(input));
                 }
             }
             if targets.is_empty() {
@@ -951,6 +964,7 @@ impl AppState {
                         entry.versions.push(ChannelVersion {
                             version: p.version.unwrap_or_else(|| "Unknown".to_string()),
                             channel: channel.clone(),
+                            locked_version: None,
                         });
                     }
                 }
@@ -1030,14 +1044,17 @@ impl AppState {
             for (pkg_name, source_input) in packages {
                 let channel = inputs.iter()
                     .find(|i| i.name == source_input)
-                    .map(|i| domain::extract_channel(i))
+                    .map(|i| domain::extract_upstream_channel(i))
                     .unwrap_or_else(|| "nixos-unstable".to_string());
 
                 let tx = tx.clone();
                 let pkg = pkg_name.clone();
                 std::thread::spawn(move || {
                     if let Ok(results) = domain::nh_search(pkg.clone(), channel) {
-                        if let Some(latest) = results.iter().find(|p| p.attribute.ends_with(&pkg)) {
+                        let latest = results.iter().find(|p| p.attribute == pkg)
+                            .or_else(|| results.iter().find(|p| p.attribute.ends_with(&format!(".{}", pkg))));
+                        
+                        if let Some(latest) = latest {
                             if let Some(version) = &latest.version {
                                 let _ = tx.send(Action::UpdatePackageVersion(pkg, version.clone()));
                             }
