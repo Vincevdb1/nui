@@ -1,6 +1,6 @@
 use ratatui::{prelude::*, widgets::*};
 
-pub fn render(frame: &mut Frame, area: Rect, is_focused: bool, nh_version: Option<String>, nxv_version: Option<String>) {
+pub fn render(frame: &mut Frame, area: Rect, _is_focused: bool, nh_version: Option<String>, nxv_version: Option<String>) {
     let version = env!("CARGO_PKG_VERSION");
     let mut text = Text::from(vec![
         Line::from(r"             _ ").cyan().bold(),
@@ -45,15 +45,6 @@ pub fn render(frame: &mut Frame, area: Rect, is_focused: bool, nh_version: Optio
         Line::from("󰿃 MIT License").italic().fg(Color::DarkGray),
     ]);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(if is_focused {
-            Style::default().fg(Color::Cyan)
-        } else {
-            Style::default()
-        });
-
-    let p = Paragraph::new(text).block(block).wrap(Wrap { trim: false });
-
+    let p = Paragraph::new(text).wrap(Wrap { trim: false });
     frame.render_widget(p, area);
 }
