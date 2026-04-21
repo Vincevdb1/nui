@@ -4,10 +4,16 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-25.11";
+    nxv.url = "github:utensils/nxv";
   };
 
   outputs =
-    { self, nixpkgs, nixpkgs-stable }:
+    {
+      self,
+      nixpkgs,
+      nixpkgs-stable,
+      nxv,
+    }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
@@ -25,10 +31,22 @@
 
         nativeBuildInputs = with pkgs; [
           pkg-config
+          makeWrapper
         ];
 
         buildInputs = with pkgs; [
         ];
+
+        postInstall = ''
+          wrapProgram $out/bin/nui \
+            --prefix PATH : ${
+              pkgs.lib.makeBinPath [
+                pkgs.nix
+                pkgs.nh
+                nxv.packages.${system}.default
+              ]
+            }
+        '';
       };
 
       devShells.${system}.default = pkgs.mkShell {
@@ -41,6 +59,8 @@
           rust-analyzer
           clippy
           rustfmt
+          nh
+          nxv.packages.${system}.default
         ];
 
         shellHook = "";

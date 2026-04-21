@@ -53,8 +53,12 @@ To use it in your own Flake:
 
 ## Requirements
 - **Nix**: Must have the Nix package manager installed with Flakes enabled (`experimental-features = nix-command flakes`).
-- **nh**: [Yet another Nix Helper](https://github.com/viperML/nh) - Required for fast, interactive package searching.
-- **nxv**: [Nix Version search](https://github.com/utensils/nxv) - Required for fetching and selecting specific package versions.
+
+> **Note**: When installed via the provided Flake, **nh** and **nxv** are automatically bundled and available to `nui` at runtime.
+
+- **nh** (Optional if not using Flake): [Yet another Nix Helper](https://github.com/viperML/nh) - Required for fast, interactive package searching.
+- **nxv** (Optional if not using Flake): [Nix Version search](https://github.com/vincevdb1/nxv) - Required for fetching and selecting specific package versions.
+
 
 ## License
 
