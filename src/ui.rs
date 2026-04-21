@@ -150,6 +150,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                     } else {
                         Some(source_input.clone())
                     },
+                    hash: None,
                 });
             }
             all_packages.sort_by(|a, b| a.name.cmp(&b.name));

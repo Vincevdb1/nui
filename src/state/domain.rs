@@ -19,6 +19,8 @@ pub struct NHPackage {
     pub platforms: Option<Vec<String>>,
     #[serde(rename = "package_license_set")]
     pub license_set: Option<Vec<String>>,
+    #[serde(default)]
+    pub hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +38,7 @@ pub struct SearchResult {
     pub platforms: Vec<String>,
     pub is_unfree: bool,
     pub source_input: Option<String>,
+    pub hash: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,8 +99,62 @@ pub fn nix_search(query: String, rev: String) -> Result<Vec<NHPackage>, String> 
             description: pkg.description,
             platforms: None,
             license_set: None,
+            hash: None,
         })
         .collect())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NXVPackage {
+    pub name: String,
+    pub version: String,
+    pub attribute_path: String,
+    pub description: Option<String>,
+    pub platforms: Option<String>,
+    pub license: Option<String>,
+    pub last_commit_hash: String,
+    #[allow(dead_code)]
+    pub last_commit_date: String,
+}
+
+pub fn nxv_search(query: String) -> Result<Vec<NHPackage>, String> {
+    let output = std::process::Command::new("nxv")
+        .args(["search", "-f", "json", "--sort", "date", &query])
+        .output()
+        .map_err(|e| format!("Failed to execute nxv: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!("nxv search failed with status: {}", output.status));
+    }
+
+    let results: Vec<NXVPackage> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse nxv output: {}", e))?;
+
+    let mut seen = HashSet::new();
+    let filtered = results
+        .into_iter()
+        .filter(|p| seen.insert(p.attribute_path.clone()))
+        .map(|p| {
+            let platforms = p
+                .platforms
+                .and_then(|ps| serde_json::from_str::<Vec<String>>(&ps).ok());
+            let license_set = p
+                .license
+                .and_then(|ls| serde_json::from_str::<Vec<String>>(&ls).ok());
+
+            NHPackage {
+                attribute: p.attribute_path,
+                pname: Some(p.name),
+                version: Some(p.version),
+                description: p.description,
+                platforms,
+                license_set,
+                hash: Some(p.last_commit_hash),
+            }
+        })
+        .collect();
+
+    Ok(filtered)
 }
 
 pub fn extract_channel(input: &Input) -> String {

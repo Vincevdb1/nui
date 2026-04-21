@@ -46,7 +46,18 @@ fn main() -> Result<()> {
             let env_name = if packages.is_empty() {
                 "nui-shell-env".to_string()
             } else {
-                format!("nui-shell:{}-env", packages.join(":"))
+                let shortened_packages: Vec<String> = packages.iter().map(|pkg| {
+                    if let Some(hash_idx) = pkg.find("nixpkgs/") {
+                        if let Some(hash_end) = pkg[hash_idx + 8..].find('#') {
+                            let hash = &pkg[hash_idx + 8..hash_idx + 8 + hash_end];
+                            if hash.len() > 7 {
+                                return format!("{}{}{}", &pkg[..hash_idx + 8], &hash[..7], &pkg[hash_idx + 8 + hash_end..]);
+                            }
+                        }
+                    }
+                    pkg.clone()
+                }).collect();
+                format!("nui-shell:{}-env", shortened_packages.join(":"))
             };
 
             args.push("--impure".to_string());

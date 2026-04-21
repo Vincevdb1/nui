@@ -375,8 +375,14 @@ impl AppState {
                     if let Some(result) = self.domain.package_search_results.get(i) {
                         let package_name = result.name.clone();
                         if self.mode == Mode::Shell {
-                            if !self.shell_packages.contains(&package_name) {
-                                self.shell_packages.push(package_name);
+                            let pkg_to_add = if let Some(hash) = &result.hash {
+                                format!("nixpkgs/{}#{}", hash, package_name)
+                            } else {
+                                package_name
+                            };
+
+                            if !self.shell_packages.contains(&pkg_to_add) {
+                                self.shell_packages.push(pkg_to_add);
                                 if self.ui.shell_package_list_state.selected().is_none() {
                                     self.ui.shell_package_list_state.select(Some(0));
                                 }
@@ -890,7 +896,7 @@ impl AppState {
         let tx = self.tx.clone();
 
         let mut search_targets: Vec<String> = if self.mode == Mode::Shell {
-            vec!["nixos-unstable".to_string()]
+            vec!["nxv".to_string()]
         } else {
             let mut targets = Vec::new();
             for input in &self.domain.inputs {
@@ -908,29 +914,22 @@ impl AppState {
         search_targets.dedup();
         self.domain.searched_channels = search_targets.clone();
 
+        let mode = self.mode.clone();
         std::thread::spawn(move || {
-            let mut threads = Vec::new();
-            for target in search_targets {
-                let q = query.clone();
-                let t = target.clone();
-                threads.push(std::thread::spawn(move || {
-                    let res = domain::nh_search(q, t.clone());
-                    (t, res)
-                }));
-            }
-
             let mut results_map: HashMap<String, SearchResult> = HashMap::new();
-            for t in threads {
-                if let Ok((channel, Ok(packages))) = t.join() {
+
+            if mode == Mode::Shell {
+                if let Ok(packages) = domain::nxv_search(query.clone()) {
                     for p in packages {
                         let entry = results_map.entry(p.attribute.clone()).or_insert_with(|| {
                             SearchResult {
                                 name: p.attribute.clone(),
-                                description: String::new(),
+                                description: p.description.clone().unwrap_or_default(),
                                 versions: Vec::new(),
-                                platforms: Vec::new(),
+                                platforms: p.platforms.clone().unwrap_or_default(),
                                 is_unfree: false,
                                 source_input: None,
+                                hash: p.hash.clone(),
                             }
                         });
 
@@ -940,34 +939,78 @@ impl AppState {
                             }
                         }
 
-                        let old_is_unstable = entry
-                            .versions
-                            .iter()
-                            .any(|v| v.channel.contains("unstable"));
-                        let new_is_unstable = channel.contains("unstable");
-
-                        let desc = p.description.clone().unwrap_or_default();
-                        if entry.description.is_empty()
-                            || (new_is_unstable && !old_is_unstable)
-                            || desc.len() > entry.description.len()
-                        {
-                            entry.description = desc;
-                        }
-
-                        if let Some(platforms) = p.platforms {
-                            for plat in platforms {
-                                if !entry.platforms.contains(&plat) {
-                                    entry.platforms.push(plat);
-                                }
-                            }
-                            entry.platforms.sort();
-                        }
-
                         entry.versions.push(ChannelVersion {
                             version: p.version.unwrap_or_else(|| "Unknown".to_string()),
-                            channel: channel.clone(),
+                            channel: "nxv".to_string(),
                             locked_version: None,
                         });
+                    }
+                }
+            } else {
+                let mut threads = Vec::new();
+                for target in search_targets {
+                    let q = query.clone();
+                    let t = target.clone();
+                    threads.push(std::thread::spawn(move || {
+                        let res = domain::nh_search(q, t.clone());
+                        (t, res)
+                    }));
+                }
+
+                for t in threads {
+                    if let Ok((channel, Ok(packages))) = t.join() {
+                        for p in packages {
+                            let entry = results_map.entry(p.attribute.clone()).or_insert_with(|| {
+                                SearchResult {
+                                    name: p.attribute.clone(),
+                                    description: String::new(),
+                                    versions: Vec::new(),
+                                    platforms: Vec::new(),
+                                    is_unfree: false,
+                                    source_input: None,
+                                    hash: p.hash.clone(),
+                                }
+                            });
+
+                            if entry.hash.is_none() {
+                                entry.hash = p.hash.clone();
+                            }
+
+                            if let Some(license_set) = p.license_set {
+                                if license_set.iter().any(|l| l.to_lowercase().contains("unfree")) {
+                                    entry.is_unfree = true;
+                                }
+                            }
+
+                            let old_is_unstable = entry
+                                .versions
+                                .iter()
+                                .any(|v| v.channel.contains("unstable"));
+                            let new_is_unstable = channel.contains("unstable");
+
+                            let desc = p.description.clone().unwrap_or_default();
+                            if entry.description.is_empty()
+                                || (new_is_unstable && !old_is_unstable)
+                                || desc.len() > entry.description.len()
+                            {
+                                entry.description = desc;
+                            }
+
+                            if let Some(platforms) = p.platforms {
+                                for plat in platforms {
+                                    if !entry.platforms.contains(&plat) {
+                                        entry.platforms.push(plat);
+                                    }
+                                }
+                                entry.platforms.sort();
+                            }
+
+                            entry.versions.push(ChannelVersion {
+                                version: p.version.unwrap_or_else(|| "Unknown".to_string()),
+                                channel: channel.clone(),
+                                locked_version: None,
+                            });
+                        }
                     }
                 }
             }
