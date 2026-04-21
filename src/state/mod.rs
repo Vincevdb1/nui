@@ -150,6 +150,9 @@ impl AppState {
                 } else {
                     self.mode = Mode::Flake;
                     self.ui.selected_index = 1;
+                    if !self.domain.package_info.is_empty() {
+                        self.ui.package_table_state.select(Some(1));
+                    }
                     // Re-initialize Flake mode data
                     let nix_files = find_nix_files();
                     self.domain.nix_files = nix_files;
@@ -168,13 +171,13 @@ impl AppState {
                     if self.mode == Mode::Shell && !self.shell_packages.is_empty() {
                         let i = match self.ui.shell_package_list_state.selected() {
                             Some(i) => {
-                                if i >= self.shell_packages.len() - 1 {
-                                    0
+                                if i >= self.shell_packages.len() {
+                                    1
                                 } else {
                                     i + 1
                                 }
                             }
-                            None => 0,
+                            None => 1,
                         };
                         self.ui.shell_package_list_state.select(Some(i));
                     }
@@ -218,13 +221,13 @@ impl AppState {
                     if self.mode == Mode::Shell && !self.shell_packages.is_empty() {
                         let i = match self.ui.shell_package_list_state.selected() {
                             Some(i) => {
-                                if i == 0 {
-                                    self.shell_packages.len() - 1
+                                if i <= 1 {
+                                    self.shell_packages.len()
                                 } else {
                                     i - 1
                                 }
                             }
-                            None => 0,
+                            None => 1,
                         };
                         self.ui.shell_package_list_state.select(Some(i));
                     }
@@ -375,17 +378,15 @@ impl AppState {
                     if let Some(result) = self.domain.package_search_results.get(i) {
                         let package_name = result.name.clone();
                         if self.mode == Mode::Shell {
+                            let version = result.versions.first().map(|v| v.version.clone()).unwrap_or_else(|| "Unknown".to_string());
                             let pkg_to_add = if let Some(hash) = &result.hash {
-                                format!("nixpkgs/{}#{}", hash, package_name)
+                                format!("nixpkgs/{}#{}@{}", hash, package_name, version)
                             } else {
-                                package_name
+                                format!("{}@{}", package_name, version)
                             };
 
                             if !self.shell_packages.contains(&pkg_to_add) {
                                 self.shell_packages.push(pkg_to_add);
-                                if self.ui.shell_package_list_state.selected().is_none() {
-                                    self.ui.shell_package_list_state.select(Some(0));
-                                }
                             }
                             self.ui.is_adding_package = false;
                         } else {
@@ -721,9 +722,9 @@ impl AppState {
                         self.ui.shell_package_list_state.select(None);
                     } else {
                         let new_index = if index >= self.shell_packages.len() {
-                            self.shell_packages.len() - 1
+                            self.shell_packages.len()
                         } else {
-                            index
+                            index + 1
                         };
                         self.ui.shell_package_list_state.select(Some(new_index));
                     }
@@ -761,7 +762,7 @@ impl AppState {
             Action::SelectVersion(version_info) => {
                 if self.mode == Mode::Shell {
                     if let Some(pkg_name) = self.ui.selected_package_name.clone() {
-                        let pinned_pkg = format!("nixpkgs/{}#{}", version_info.hash, pkg_name);
+                        let pinned_pkg = format!("nixpkgs/{}#{}@{}", version_info.hash, pkg_name, version_info.version);
                         self.shell_packages.push(pinned_pkg);
                     }
                     self.ui.is_adding_package = false;

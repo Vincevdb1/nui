@@ -37,25 +37,32 @@ fn main() -> Result<()> {
         if !packages.is_empty() {
             let mut args = vec!["shell".to_string()];
             for pkg in &packages {
-                if pkg.contains('#') {
-                    args.push(pkg.clone());
+                let pkg_base = if pkg.contains('@') {
+                    pkg.rsplit_once('@').map(|(base, _)| base).unwrap_or(pkg)
                 } else {
-                    args.push(format!("github:NixOS/nixpkgs/nixpkgs-unstable#{}", pkg));
+                    pkg
+                };
+
+                if pkg_base.contains('#') {
+                    args.push(pkg_base.to_string());
+                } else {
+                    args.push(format!("github:NixOS/nixpkgs/nixpkgs-unstable#{}", pkg_base));
                 }
             }
             let env_name = if packages.is_empty() {
                 "nui-shell-env".to_string()
             } else {
                 let shortened_packages: Vec<String> = packages.iter().map(|pkg| {
-                    if let Some(hash_idx) = pkg.find("nixpkgs/") {
-                        if let Some(hash_end) = pkg[hash_idx + 8..].find('#') {
-                            let hash = &pkg[hash_idx + 8..hash_idx + 8 + hash_end];
+                    let mut display_pkg = pkg.clone();
+                    if let Some(hash_idx) = display_pkg.find("nixpkgs/") {
+                        if let Some(hash_end) = display_pkg[hash_idx + 8..].find('#') {
+                            let hash = &display_pkg[hash_idx + 8..hash_idx + 8 + hash_end];
                             if hash.len() > 7 {
-                                return format!("{}{}{}", &pkg[..hash_idx + 8], &hash[..7], &pkg[hash_idx + 8 + hash_end..]);
+                                display_pkg = format!("{}{}{}", &display_pkg[..hash_idx + 8], &hash[..7], &display_pkg[hash_idx + 8 + hash_end..]);
                             }
                         }
                     }
-                    pkg.clone()
+                    display_pkg
                 }).collect();
                 format!("nui-shell:{}-env", shortened_packages.join(":"))
             };
@@ -192,7 +199,11 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
             KeyCode::Char('s') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => Some(Action::StartShell(app.shell_packages.clone())),
             KeyCode::Char('d') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => {
                 if let Some(i) = app.ui.shell_package_list_state.selected() {
-                    Some(Action::RemovePackage(i))
+                    if i > 0 {
+                        Some(Action::RemovePackage(i - 1))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }

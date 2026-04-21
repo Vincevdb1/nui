@@ -120,6 +120,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             &app.domain.package_versions,
             &mut app.ui.version_list_state,
             &app.domain.package_info,
+            app.mode == crate::state::Mode::Shell,
         );
     }
 
