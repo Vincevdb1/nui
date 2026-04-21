@@ -6,13 +6,31 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .shell_packages
         .iter()
         .map(|p| {
+            let display_name = if p.starts_with("nixpkgs/") && p.contains('#') {
+                if let Some((prefix, suffix)) = p.split_once('#') {
+                    if let Some((repo, hash)) = prefix.split_once('/') {
+                        if hash.len() > 7 {
+                            format!("{}/{}#{}", repo, &hash[..7], suffix)
+                        } else {
+                            p.clone()
+                        }
+                    } else {
+                        p.clone()
+                    }
+                } else {
+                    p.clone()
+                }
+            } else {
+                p.clone()
+            };
+
             ListItem::new(Line::from(vec![
                 Span::styled(
                     " • ",
                     Style::default().fg(Color::DarkGray),
                 ),
                 Span::styled(
-                    p,
+                    display_name,
                     Style::default().add_modifier(Modifier::BOLD),
                 ),
             ]))

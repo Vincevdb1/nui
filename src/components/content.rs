@@ -26,7 +26,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
         3 => " Content: Inputs ".to_string(),
         1 => {
             if app.mode == crate::state::Mode::Shell {
-                " Content: Packages ".to_string()
+                " Shell: Packages ".to_string()
             } else {
                 " Content: Title ".to_string()
             }
