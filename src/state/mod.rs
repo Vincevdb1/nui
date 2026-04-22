@@ -584,6 +584,9 @@ impl AppState {
 
                                 std::thread::spawn(move || {
                                     for result in top_results {
+                                        if result.source_input.is_some() {
+                                            continue;
+                                        }
                                         for input in &inputs {
                                             if input.url.contains("nixpkgs") {
                                                 if let Some(rev) = &input.rev {
@@ -911,15 +914,27 @@ impl AppState {
             targets
         };
 
+        let mut non_nixpkgs_inputs = Vec::new();
+        if self.mode == Mode::Flake {
+            for input in &self.domain.inputs {
+                if !input.url.contains("nixpkgs") {
+                    non_nixpkgs_inputs.push(input.clone());
+                }
+            }
+        }
+
         search_targets.sort();
         search_targets.dedup();
         self.domain.searched_channels = search_targets.clone();
 
         let mode = self.mode.clone();
+        let non_nixpkgs_names: Vec<String> = non_nixpkgs_inputs.iter().map(|i| i.name.clone()).collect();
+
         std::thread::spawn(move || {
             let mut results_map: HashMap<String, SearchResult> = HashMap::new();
 
             if mode == Mode::Shell {
+                // ... (shell mode logic remains same)
                 // In Shell mode, we use both nh and nxv
                 // NH Search (current unstable channel)
                 if let Ok(packages) = domain::nh_search(query.clone(), "nixos-unstable".to_string()) {
@@ -1009,17 +1024,42 @@ impl AppState {
                     }));
                 }
 
+                for input in non_nixpkgs_inputs {
+                    let q = query.clone();
+                    let input_name = input.name.clone();
+                    let input_url = input.url.clone();
+                    threads.push(std::thread::spawn(move || {
+                        let res = domain::nix_search_flake(input_url, q);
+                        (input_name, res)
+                    }));
+                }
+
+                // Search current flake
+                let q = query.clone();
+                threads.push(std::thread::spawn(move || {
+                    let res = domain::nix_search_flake(".".to_string(), q);
+                    ("self".to_string(), res)
+                }));
+
                 for t in threads {
-                    if let Ok((channel, Ok(packages))) = t.join() {
+                    if let Ok((source, Ok(packages))) = t.join() {
+                        let is_input = non_nixpkgs_names.contains(&source) || source == "self";
                         for p in packages {
-                            let entry = results_map.entry(p.attribute.clone()).or_insert_with(|| {
+                            // Make name unique for non-nixpkgs inputs to avoid collisions
+                            let key = if is_input {
+                                format!("{}.{}", source, p.attribute)
+                            } else {
+                                p.attribute.clone()
+                            };
+
+                            let entry = results_map.entry(key.clone()).or_insert_with(|| {
                                 SearchResult {
-                                    name: p.attribute.clone(),
+                                    name: key.clone(),
                                     description: String::new(),
                                     versions: Vec::new(),
                                     platforms: Vec::new(),
                                     is_unfree: false,
-                                    source_input: None,
+                                    source_input: if is_input { Some(source.clone()) } else { None },
                                     hash: p.hash.clone(),
                                 }
                             });
@@ -1038,7 +1078,7 @@ impl AppState {
                                 .versions
                                 .iter()
                                 .any(|v| v.channel.contains("unstable"));
-                            let new_is_unstable = channel.contains("unstable");
+                            let new_is_unstable = source.contains("unstable");
 
                             let desc = p.description.clone().unwrap_or_default();
                             if entry.description.is_empty()
@@ -1059,7 +1099,7 @@ impl AppState {
 
                             entry.versions.push(ChannelVersion {
                                 version: p.version.unwrap_or_else(|| "Unknown".to_string()),
-                                channel: channel.clone(),
+                                channel: source.clone(),
                                 locked_version: None,
                             });
                         }

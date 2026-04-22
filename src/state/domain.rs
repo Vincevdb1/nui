@@ -78,6 +78,10 @@ struct NixSearchPackage {
 
 pub fn nix_search(query: String, rev: String) -> Result<Vec<NHPackage>, String> {
     let flake_url = format!("github:NixOS/nixpkgs/{}", rev);
+    nix_search_flake(flake_url, query)
+}
+
+pub fn nix_search_flake(flake_url: String, query: String) -> Result<Vec<NHPackage>, String> {
     let output = std::process::Command::new("nix")
         .args(["search", "--json", &flake_url, &query])
         .output()
