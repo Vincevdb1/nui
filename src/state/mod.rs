@@ -920,7 +920,9 @@ impl AppState {
             let mut results_map: HashMap<String, SearchResult> = HashMap::new();
 
             if mode == Mode::Shell {
-                if let Ok(packages) = domain::nxv_search(query.clone()) {
+                // In Shell mode, we use both nh and nxv
+                // NH Search (current unstable channel)
+                if let Ok(packages) = domain::nh_search(query.clone(), "nixos-unstable".to_string()) {
                     for p in packages {
                         let entry = results_map.entry(p.attribute.clone()).or_insert_with(|| {
                             SearchResult {
@@ -942,9 +944,58 @@ impl AppState {
 
                         entry.versions.push(ChannelVersion {
                             version: p.version.unwrap_or_else(|| "Unknown".to_string()),
-                            channel: "nxv".to_string(),
+                            channel: "nixos-unstable".to_string(),
                             locked_version: None,
                         });
+                    }
+                }
+
+                // NXV Search (for version history and additional results)
+                if let Ok(packages) = domain::nxv_search(query.clone()) {
+                    for p in packages {
+                        let entry = results_map.entry(p.attribute.clone()).or_insert_with(|| {
+                            SearchResult {
+                                name: p.attribute.clone(),
+                                description: p.description.clone().unwrap_or_default(),
+                                versions: Vec::new(),
+                                platforms: p.platforms.clone().unwrap_or_default(),
+                                is_unfree: false,
+                                source_input: None,
+                                hash: p.hash.clone(),
+                            }
+                        });
+
+                        if entry.description.is_empty() {
+                            if let Some(desc) = p.description {
+                                entry.description = desc;
+                            }
+                        }
+
+                        if entry.platforms.is_empty() {
+                            if let Some(platforms) = p.platforms {
+                                entry.platforms = platforms;
+                            }
+                        }
+
+                        if entry.hash.is_none() {
+                            entry.hash = p.hash.clone();
+                        }
+
+                        if let Some(license_set) = p.license_set {
+                            if license_set.iter().any(|l| l.to_lowercase().contains("unfree")) {
+                                entry.is_unfree = true;
+                            }
+                        }
+
+                        // Only add nxv version if not already present or as a distinct "nxv" entry
+                        // Typically NXV provides history, but here we just want to show it's indexed
+                        if !entry.versions.iter().any(|v| v.channel == "nxv") {
+                            entry.versions.push(ChannelVersion {
+                                version: p.version.unwrap_or_else(|| "Unknown".to_string()),
+                                channel: "nxv".to_string(),
+                                locked_version: None,
+                            });
+                        }
                     }
                 }
             } else {

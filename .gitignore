@@ -9,3 +9,6 @@ result
 .direnv
 tmp
 
+# Env
+.env
+
