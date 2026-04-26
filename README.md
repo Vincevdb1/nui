@@ -57,7 +57,7 @@ To use it in your own Flake:
 > **Note**: When installed via the provided Flake, **nix-search** and **nxv** are automatically bundled and available to `nui` at runtime.
 
 - **nix-search**: [nix-search-cli](https://github.com/peterldowns/nix-search-cli) - Required for fast, interactive package searching.
-- **nxv**: [Nix Version search](https://github.com/vincevdb1/nxv) - Required for fetching and selecting specific package versions.
+- **nxv**: [Nix Version search](https://github.com/utensils/nxv) - Required for fetching and selecting specific package versions.
 
 
 ## License
