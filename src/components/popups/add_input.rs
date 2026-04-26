@@ -165,7 +165,7 @@ pub fn render(
     frame.render_widget(url_input, manual_chunks[1]);
 
     let footer_text = match cursor {
-        0 => "Enter: Select | j/k: Nav Suggestions | Tab: Next Field | q/Esc: Close",
+        0 => "Enter: Select | j/k: Nav Suggestions | Tab: Next Field | Esc: Close",
         1 => "Type Input Name... | Tab: Next Field | Esc: Close",
         2 => "Type Input URL... | Enter: Add | Tab: Next Field | Esc: Close",
         _ => "Press 'Esc' to close",

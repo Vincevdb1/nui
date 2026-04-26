@@ -104,7 +104,7 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
         if app.ui.is_adding_package {
             if app.ui.is_showing_package_details {
                 return match key.code {
-                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Tab => {
+                    KeyCode::Esc | KeyCode::Tab => {
                         Some(Action::TogglePackageDetails)
                     }
                     _ => None,
@@ -114,7 +114,6 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
             if app.ui.is_selecting_version {
                 return match key.code {
                     KeyCode::Esc => Some(Action::BackToPackageSearch),
-                    KeyCode::Char('q') => Some(Action::ClosePopup),
                     KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveVersionSelectionDown),
                     KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveVersionSelectionUp),
                     KeyCode::Enter => {
@@ -130,7 +129,7 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
             }
 
             return match key.code {
-                KeyCode::Esc | KeyCode::Char('q') => Some(Action::ClosePopup),
+                KeyCode::Esc => Some(Action::ClosePopup),
                 KeyCode::Tab => {
                     if !app.domain.package_search_results.is_empty() {
                         Some(Action::TogglePackageDetails)
@@ -158,25 +157,28 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
 
         if app.ui.is_adding_input {
             return match key.code {
-                KeyCode::Esc | KeyCode::Char('q') if app.ui.input_cursor == 0 => {
-                    Some(Action::ClosePopup)
-                }
                 KeyCode::Esc => Some(Action::ClosePopup),
                 KeyCode::Tab => Some(Action::NextInputField),
                 KeyCode::BackTab => Some(Action::PreviousInputField),
-                KeyCode::Down | KeyCode::Char('j') => {
+                KeyCode::Down => {
                     if app.ui.input_cursor == 0 {
                         Some(Action::MoveSuggestionDown)
                     } else {
                         Some(Action::NextInputField)
                     }
                 }
-                KeyCode::Up | KeyCode::Char('k') => {
+                KeyCode::Char('j') if app.ui.input_cursor == 0 => {
+                    Some(Action::MoveSuggestionDown)
+                }
+                KeyCode::Up => {
                     if app.ui.input_cursor == 0 {
                         Some(Action::MoveSuggestionUp)
                     } else {
                         Some(Action::PreviousInputField)
                     }
+                }
+                KeyCode::Char('k') if app.ui.input_cursor == 0 => {
+                    Some(Action::MoveSuggestionUp)
                 }
                 KeyCode::Char(c) => Some(Action::InputPopupChar(c)),
                 KeyCode::Backspace => Some(Action::InputPopupBackspace),

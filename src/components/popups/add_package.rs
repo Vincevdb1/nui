@@ -72,9 +72,9 @@ pub fn render(
     }
 
     let footer_text = if is_selecting_version {
-        "Enter: Select Version | Esc: Back to Search | q: Close"
+        "Enter: Select Version | Esc: Back to Search"
     } else {
-        "Type: Search | Enter: Add | M-Enter: Versions | Tab: Details | Esc/q: Close"
+        "Type: Search | Enter: Add | M-Enter: Versions | Tab: Details | Esc: Close"
     };
     let footer = Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, chunks[2]);
