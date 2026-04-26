@@ -46,8 +46,10 @@ impl Package {
           getPkgInfo = p: let 
             tried = builtins.tryEval p;
           in if tried.success && (tried.value ? pname || tried.value ? name) then
-            let v = tried.value; in {{
-              pname = if v ? pname then v.pname else (builtins.parseDrvName v.name).name;
+            let v = tried.value; 
+                pname = if v ? pname then v.pname else (builtins.parseDrvName v.name).name;
+            in if (builtins.match ".*\\.sh" pname != null) || (builtins.match ".*-hook" pname != null) then null else {{
+              pname = pname;
               name = v.name or "";
               version = v.version or (builtins.parseDrvName v.name).version;
               description = v.meta.description or "";
