@@ -59,7 +59,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
                     frame,
                     inner_area,
                     app.ui.selected_index == 1,
-                    app.domain.nh_version.clone(),
+                    app.domain.nix_search_cli_version.clone(),
                     app.domain.nxv_version.clone(),
                 );
             }

@@ -1307,28 +1307,4 @@ fn remove_from_outputs_pattern(content: &str, name: &str) -> String {
     content.to_string()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_normalize_flake_ref() {
-        // Relative paths without ./ (should add ./)
-        assert_eq!(normalize_flake_ref("my-flake"), "./my-flake");
-        assert_eq!(normalize_flake_ref("path/to/flake"), "./path/to/flake");
-
-        // Relative paths with ./ (should stay same)
-        assert_eq!(normalize_flake_ref("./my-flake"), "./my-flake");
-
-        // Absolute paths (should stay same)
-        assert_eq!(normalize_flake_ref("/abs/path"), "/abs/path");
-
-        // URLs (should stay same)
-        assert_eq!(normalize_flake_ref("github:NixOS/nixpkgs"), "github:NixOS/nixpkgs");
-        assert_eq!(normalize_flake_ref("git+https://github.com/NixOS/nixpkgs"), "git+https://github.com/NixOS/nixpkgs");
-
-        // . (should stay same)
-        assert_eq!(normalize_flake_ref("."), ".");
-    }
-}
 

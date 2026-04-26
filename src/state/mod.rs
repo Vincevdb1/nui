@@ -73,7 +73,7 @@ impl AppState {
                 nix_files,
                 inputs,
                 outputs,
-                nh_version: domain::get_tool_version("nh"),
+                nix_search_cli_version: domain::get_tool_version("nix-search"),
                 nxv_version: domain::get_tool_version("nxv"),
                 ..Default::default()
             },
@@ -944,9 +944,9 @@ impl AppState {
 
             if mode == Mode::Shell {
                 // ... (shell mode logic remains same)
-                // In Shell mode, we use both nh and nxv
-                // NH Search (current unstable channel)
-                if let Ok(packages) = domain::nh_search(query.clone(), "nixos-unstable".to_string()) {
+                // In Shell mode, we use both nix-search and nxv
+                // Nix Search (current unstable channel)
+                if let Ok(packages) = domain::nix_search_cli(query.clone(), "nixos-unstable".to_string()) {
                     for p in packages {
                         let entry = results_map.entry(p.attribute.clone()).or_insert_with(|| {
                             SearchResult {
@@ -1028,7 +1028,7 @@ impl AppState {
                     let q = query.clone();
                     let t = target.clone();
                     threads.push(std::thread::spawn(move || {
-                        let res = domain::nh_search(q, t.clone());
+                        let res = domain::nix_search_cli(q, t.clone());
                         (t, res)
                     }));
                 }
@@ -1196,7 +1196,7 @@ impl AppState {
                 let tx = tx.clone();
                 let pkg = pkg_name.clone();
                 std::thread::spawn(move || {
-                    if let Ok(results) = domain::nh_search(pkg.clone(), channel) {
+                    if let Ok(results) = domain::nix_search_cli(pkg.clone(), channel) {
                         let latest = results.iter().find(|p| p.attribute == pkg)
                             .or_else(|| results.iter().find(|p| p.attribute.ends_with(&format!(".{}", pkg))));
                         

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Deserialize)]
-pub struct NHPackage {
+pub struct SearchPackage {
     #[serde(rename = "package_attr_name")]
     pub attribute: String,
     #[serde(rename = "package_pname")]
@@ -21,6 +21,23 @@ pub struct NHPackage {
     pub license_set: Option<Vec<String>>,
     #[serde(default)]
     pub hash: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NixSearchCliPackage {
+    pub package_attr_name: String,
+    pub package_pname: Option<String>,
+    pub package_pversion: Option<String>,
+    pub package_description: Option<String>,
+    pub package_platforms: Option<Vec<String>>,
+    pub package_license: Option<Vec<NixSearchCliLicense>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NixSearchCliLicense {
+    #[serde(rename = "fullName")]
+    pub full_name: String,
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,32 +58,73 @@ pub struct SearchResult {
     pub hash: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct NHSearchResponse {
-    pub results: Vec<NHPackage>,
-}
+pub fn nix_search_cli(query: String, channel: String) -> Result<Vec<SearchPackage>, String> {
+    let mapped_channel = if channel.contains("unstable") {
+        "unstable".to_string()
+    } else {
+        // Extract version numbers like 24.11 or 25.11
+        let mut version = String::new();
+        let mut found_dot = false;
+        for c in channel.chars() {
+            if c.is_ascii_digit() {
+                version.push(c);
+            } else if c == '.' && !version.is_empty() && !found_dot {
+                version.push(c);
+                found_dot = true;
+            } else if !version.is_empty() {
+                if found_dot && version.len() >= 4 {
+                    break;
+                }
+                if !found_dot && version.len() >= 2 {
+                    // Could be the start of a version, continue
+                } else {
+                    version.clear();
+                    found_dot = false;
+                }
+            }
+        }
+        if version.len() >= 4 && found_dot {
+            version
+        } else {
+            "unstable".to_string()
+        }
+    };
 
-pub fn nh_search(query: String, channel: String) -> Result<Vec<NHPackage>, String> {
-    let output = std::process::Command::new("nh")
+    let output = std::process::Command::new("nix-search")
         .args([
-            "search",
             "--json",
-            "--platforms",
             "--channel",
-            &channel,
+            &mapped_channel,
             &query,
         ])
         .output()
-        .map_err(|e| format!("Failed to execute nh: {}", e))?;
+        .map_err(|e| format!("Failed to execute nix-search: {}", e))?;
 
     if !output.status.success() {
-        return Err(format!("nh search failed with status: {}", output.status));
+        return Err(format!("nix-search failed with status: {}", output.status));
     }
 
-    let response: NHSearchResponse = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse nh output: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let results = stdout
+        .lines()
+        .filter_map(|line| {
+            if line.trim().is_empty() {
+                return None;
+            }
+            let pkg: NixSearchCliPackage = serde_json::from_str(line).ok()?;
+            Some(SearchPackage {
+                attribute: pkg.package_attr_name,
+                pname: pkg.package_pname,
+                version: pkg.package_pversion,
+                description: pkg.package_description,
+                platforms: pkg.package_platforms,
+                license_set: pkg.package_license.map(|ls| ls.into_iter().map(|l| l.full_name).collect()),
+                hash: None,
+            })
+        })
+        .collect();
 
-    Ok(response.results)
+    Ok(results)
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,12 +134,12 @@ struct NixSearchPackage {
     version: Option<String>,
 }
 
-pub fn nix_search(query: String, rev: String) -> Result<Vec<NHPackage>, String> {
+pub fn nix_search(query: String, rev: String) -> Result<Vec<SearchPackage>, String> {
     let flake_url = format!("github:NixOS/nixpkgs/{}", rev);
     nix_search_flake(flake_url, query)
 }
 
-pub fn nix_search_flake(flake_url: String, query: String) -> Result<Vec<NHPackage>, String> {
+pub fn nix_search_flake(flake_url: String, query: String) -> Result<Vec<SearchPackage>, String> {
     let output = std::process::Command::new("nix")
         .args(["search", "--json", &flake_url, &query])
         .output()
@@ -96,7 +154,7 @@ pub fn nix_search_flake(flake_url: String, query: String) -> Result<Vec<NHPackag
 
     Ok(results
         .into_iter()
-        .map(|(attr, pkg)| NHPackage {
+        .map(|(attr, pkg)| SearchPackage {
             attribute: attr,
             pname: pkg.pname,
             version: pkg.version,
@@ -121,7 +179,7 @@ pub struct NXVPackage {
     pub last_commit_date: String,
 }
 
-pub fn nxv_search(query: String) -> Result<Vec<NHPackage>, String> {
+pub fn nxv_search(query: String) -> Result<Vec<SearchPackage>, String> {
     let output = std::process::Command::new("nxv")
         .args(["search", "-f", "json", "--sort", "date", &query])
         .output()
@@ -146,7 +204,7 @@ pub fn nxv_search(query: String) -> Result<Vec<NHPackage>, String> {
                 .license
                 .and_then(|ls| serde_json::from_str::<Vec<String>>(&ls).ok());
 
-            NHPackage {
+            SearchPackage {
                 attribute: p.attribute_path,
                 pname: Some(p.name),
                 version: Some(p.version),
@@ -283,6 +341,7 @@ pub struct DomainData {
     pub pending_fetches: HashSet<String>,
     pub package_versions: Vec<VersionInfo>,
     pub package_updates: HashMap<String, String>,
-    pub nh_version: Option<String>,
+    pub nix_search_cli_version: Option<String>,
     pub nxv_version: Option<String>,
 }
+

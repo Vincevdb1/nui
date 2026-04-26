@@ -32,6 +32,7 @@
         nativeBuildInputs = with pkgs; [
           pkg-config
           makeWrapper
+          nix-search-cli
         ];
 
         buildInputs = with pkgs; [
@@ -42,7 +43,7 @@
             --prefix PATH : ${
               pkgs.lib.makeBinPath [
                 pkgs.nix
-                pkgs.nh
+                pkgs.nix-search-cli
                 nxv.packages.${system}.default
               ]
             }
@@ -59,7 +60,7 @@
           rust-analyzer
           clippy
           rustfmt
-          nh
+          nix-search-cli
           nxv.packages.${system}.default
         ];
 

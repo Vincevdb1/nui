@@ -54,9 +54,9 @@ To use it in your own Flake:
 ## Requirements
 - **Nix**: Must have the Nix package manager installed with Flakes enabled (`experimental-features = nix-command flakes`).
 
-> **Note**: When installed via the provided Flake, **nh** and **nxv** are automatically bundled and available to `nui` at runtime.
+> **Note**: When installed via the provided Flake, **nix-search** and **nxv** are automatically bundled and available to `nui` at runtime.
 
-- **nh**: [Yet another Nix Helper](https://github.com/viperML/nh) - Required for fast, interactive package searching.
+- **nix-search**: [nix-search-cli](https://github.com/peterldowns/nix-search-cli) - Required for fast, interactive package searching.
 - **nxv**: [Nix Version search](https://github.com/vincevdb1/nxv) - Required for fetching and selecting specific package versions.
 
 

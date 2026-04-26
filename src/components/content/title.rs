@@ -1,6 +1,6 @@
 use ratatui::{prelude::*, widgets::*};
 
-pub fn render(frame: &mut Frame, area: Rect, _is_focused: bool, nh_version: Option<String>, nxv_version: Option<String>) {
+pub fn render(frame: &mut Frame, area: Rect, _is_focused: bool, nix_search_cli_version: Option<String>, nxv_version: Option<String>) {
     let version = env!("CARGO_PKG_VERSION");
     let mut text = Text::from(vec![
         Line::from(r"             _ ").cyan().bold(),
@@ -23,9 +23,9 @@ pub fn render(frame: &mut Frame, area: Rect, _is_focused: bool, nh_version: Opti
         Line::from(""),
     ]);
 
-    if let Some(v) = nh_version {
+    if let Some(v) = nix_search_cli_version {
         text.lines.push(Line::from(vec![
-            Span::raw("nh: ").gray(),
+            Span::raw("nix-search: ").gray(),
             Span::raw(v).dark_gray(),
         ]));
     }
