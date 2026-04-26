@@ -6,9 +6,7 @@ pub use ui::UiState;
 
 use crate::action::Action;
 use crate::context::find_nix_files;
-use crate::nix::flake::{
-    add_nixpkgs_input, add_package, extract_inputs, fetch_outputs,
-};
+use crate::nix::flake::{extract_inputs, fetch_outputs};
 use crate::nix::suggestions::Suggestions;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -355,7 +353,7 @@ impl AppState {
                 self.ui.is_adding_input = true;
                 self.ui.new_input_name.clear();
                 self.ui.new_input_url.clear();
-                self.ui.input_cursor = 0;
+                self.ui.input_cursor = 1;
                 self.start_fetching_suggestions();
             }
             Action::ClosePopup => {
@@ -519,7 +517,67 @@ impl AppState {
                 self.update_suggestions();
             }
             Action::InputPopupSubmit => {
-                // Add input logic
+                let name = self.ui.new_input_name.clone();
+                let url = self.ui.new_input_url.clone();
+
+                if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
+                    let flake_path = file.path.clone();
+                    let pkg_name = self.ui.selected_package_name.clone();
+                    let selected_output_index = self.ui.selected_output_index;
+                    let outputs = self.domain.outputs.clone();
+                    let tx = self.tx.clone();
+
+                    std::thread::spawn(move || {
+                        let content = std::fs::read_to_string(&flake_path).unwrap_or_default();
+                        let new_content = crate::nix::flake::add_input(&content, &name, &url);
+
+                        if let Some(pkg_name) = pkg_name {
+                            if let Some(output) = outputs.get(selected_output_index) {
+                                let parts: Vec<&str> = output.path.split('.').collect();
+                                let (system, shell_name) = if parts.len() >= 2 {
+                                    (parts[0], parts[1])
+                                } else {
+                                    ("x86_64-linux", parts[0])
+                                };
+
+                                let prefixed_pkg = format!("{}.legacyPackages.{}.{}", name, system, pkg_name);
+
+                                // We need to write the content with the new input first so add_package can find it (if it uses nix-editor)
+                                // Actually, add_package reads from file. This is a bit inefficient but safe.
+                                if let Err(e) = std::fs::write(&flake_path, &new_content) {
+                                    crate::log_output("Error", format!("Failed to write flake.nix: {}", e));
+                                    let _ = tx.send(Action::RefreshContext);
+                                    return;
+                                }
+
+                                if let Err(e) = crate::nix::flake::add_package(
+                                    &flake_path,
+                                    system,
+                                    shell_name,
+                                    &prefixed_pkg,
+                                ) {
+                                    crate::log_output("Error", format!("Failed to add package: {}", e));
+                                } else {
+                                    crate::log_output(
+                                        "Success",
+                                        format!("Added {} to {} ({})", prefixed_pkg, shell_name, system),
+                                    );
+                                }
+                            }
+                        } else {
+                            if let Err(e) = std::fs::write(&flake_path, new_content) {
+                                crate::log_output("Error", format!("Failed to write flake.nix: {}", e));
+                            } else {
+                                crate::log_output("Success", format!("Added input: {}", name));
+                            }
+                        }
+                        let _ = tx.send(Action::RefreshContext);
+                    });
+                }
+
+                self.ui.is_adding_input = false;
+                self.ui.selected_package_name = None;
+                self.ui.selected_version = None;
             }
             Action::NextInputField => {
                 self.ui.input_cursor = (self.ui.input_cursor + 1) % 3;
@@ -783,70 +841,15 @@ impl AppState {
                     return;
                 }
 
-                if let Some(pkg_name) = self.ui.selected_package_name.clone() {
-                    if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
-                        let flake_path = file.path.clone();
-                        let selected_output_index = self.ui.selected_output_index;
-                        let outputs = self.domain.outputs.clone();
-                        let tx = self.tx.clone();
-
-                        std::thread::spawn(move || {
-                            let content = std::fs::read_to_string(&flake_path).unwrap_or_default();
-
-                            // 1. Add nixpkgs input
-                            let new_content = add_nixpkgs_input(&content, &version_info.hash);
-                            if let Err(e) = std::fs::write(&flake_path, new_content) {
-                                crate::log_output("Error", format!("Failed to write flake.nix: {}", e));
-                            } else {
-                                // 2. Add package
-                                if let Some(output) = outputs.get(selected_output_index) {
-                                    if output.config_type == "devShells" {
-                                        let parts: Vec<&str> = output.path.split('.').collect();
-                                        let (system, shell_name) = if parts.len() >= 2 {
-                                            (parts[0], parts[1])
-                                        } else {
-                                            ("x86_64-linux", parts[0])
-                                        };
-
-                                        let prefixed_pkg = format!(
-                                            "nixpkgs-{}.legacyPackages.{}.{}",
-                                            version_info.hash, system, pkg_name
-                                        );
-
-                                        if let Err(e) =
-                                            add_package(&flake_path, system, shell_name, &prefixed_pkg)
-                                        {
-                                            crate::log_output(
-                                                "Error",
-                                                format!("Failed to add package: {}", e),
-                                            );
-                                        } else {
-                                            crate::log_output(
-                                                "Success",
-                                                format!(
-                                                    "Added {} to {} ({})",
-                                                    prefixed_pkg, shell_name, system
-                                                ),
-                                            );
-                                        }
-                                    } else {
-                                        crate::log_output(
-                                            "Warning",
-                                            format!(
-                                                "Version pinning is currently only supported for devShells, not {}",
-                                                output.config_type
-                                            ),
-                                        );
-                                    }
-                                }
-                            }
-                            let _ = tx.send(Action::RefreshContext);
-                        });
-                    }
+                if let Some(_pkg_name) = self.ui.selected_package_name.clone() {
+                    self.ui.selected_version = Some(version_info.clone());
+                    self.ui.is_adding_input = true;
+                    self.ui.is_adding_package = false;
+                    self.ui.is_selecting_version = false;
+                    self.ui.new_input_name = format!("nixpkgs-{}", &version_info.hash[..7]);
+                    self.ui.new_input_url = format!("github:NixOS/nixpkgs/{}", version_info.hash);
+                    self.ui.input_cursor = 1;
                 }
-                self.ui.is_adding_package = false;
-                self.ui.is_selecting_version = false;
-                self.ui.selected_package_name = None;
             }
         }
     }
