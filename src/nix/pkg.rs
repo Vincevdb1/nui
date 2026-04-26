@@ -66,7 +66,7 @@ impl Package {
         );
 
 
-        let attr_path = format!("{}#{}", flake_path, target_attr);
+        let attr_path = format!("{}#{}", crate::nix::flake::normalize_flake_ref(flake_path), target_attr);
 
         crate::log_action(
             "Evaluating nix expressions",

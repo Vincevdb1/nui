@@ -63,6 +63,14 @@ pub fn extract_inputs(content: &str, lock_content: Option<&str>) -> Vec<Input> {
     inputs.into_values().collect()
 }
 
+pub fn normalize_flake_ref(path: &str) -> String {
+    if path == "." || path.starts_with('/') || path.starts_with("./") || path.contains(':') {
+        path.to_string()
+    } else {
+        format!("./{}", path)
+    }
+}
+
 pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
     let mut configs = Vec::new();
 
@@ -70,7 +78,7 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
         .args([
             "flake",
             "show",
-            flake_path.to_str().unwrap_or("."),
+            &normalize_flake_ref(flake_path.to_str().unwrap_or(".")),
             "--json",
             "--impure",
         ])
@@ -1297,5 +1305,30 @@ fn remove_from_outputs_pattern(content: &str, name: &str) -> String {
         }
     }
     content.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_flake_ref() {
+        // Relative paths without ./ (should add ./)
+        assert_eq!(normalize_flake_ref("my-flake"), "./my-flake");
+        assert_eq!(normalize_flake_ref("path/to/flake"), "./path/to/flake");
+
+        // Relative paths with ./ (should stay same)
+        assert_eq!(normalize_flake_ref("./my-flake"), "./my-flake");
+
+        // Absolute paths (should stay same)
+        assert_eq!(normalize_flake_ref("/abs/path"), "/abs/path");
+
+        // URLs (should stay same)
+        assert_eq!(normalize_flake_ref("github:NixOS/nixpkgs"), "github:NixOS/nixpkgs");
+        assert_eq!(normalize_flake_ref("git+https://github.com/NixOS/nixpkgs"), "git+https://github.com/NixOS/nixpkgs");
+
+        // . (should stay same)
+        assert_eq!(normalize_flake_ref("."), ".");
+    }
 }
 

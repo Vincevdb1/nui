@@ -44,7 +44,7 @@ fn main() -> Result<()> {
                 };
 
                 if pkg_base.contains('#') {
-                    args.push(pkg_base.to_string());
+                    args.push(crate::nix::flake::normalize_flake_ref(pkg_base));
                 } else {
                     args.push(format!("github:NixOS/nixpkgs/nixpkgs-unstable#{}", pkg_base));
                 }
