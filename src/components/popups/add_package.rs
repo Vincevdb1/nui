@@ -1,4 +1,6 @@
-use crate::state::domain::{SearchResult, VersionInfo};
+use crate::state::domain::{SearchResult, VersionInfo, ChannelVersion};
+use crate::nix::Input;
+use crate::state::Mode;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -22,6 +24,9 @@ pub fn render(
     version_list_state: &mut ListState,
     installed_packages: &HashMap<String, (String, String, bool, String)>,
     is_shell_mode: bool,
+    inputs: &[Input],
+    selected_package_name: Option<&String>,
+    mode: Mode,
 ) {
     let area = centered_rect(80, 70, frame.area());
     frame.render_widget(Clear, area);
@@ -51,12 +56,24 @@ pub fn render(
     frame.render_widget(search_input, chunks[0]);
 
     if is_selecting_version {
+        let current_versions = if let Some(pkg_name) = selected_package_name {
+            results.iter()
+                .find(|res| &res.name == pkg_name)
+                .map(|res| res.versions.as_slice())
+                .unwrap_or(&[])
+        } else {
+            &[]
+        };
+
         render_version_selection(
             frame,
             chunks[1],
             is_fetching_versions,
             versions,
             version_list_state,
+            inputs,
+            current_versions,
+            mode,
         );
     } else {
         render_package_search(
@@ -379,14 +396,52 @@ fn render_version_selection(
     is_fetching: bool,
     versions: &[VersionInfo],
     list_state: &mut ListState,
+    inputs: &[Input],
+    current_versions: &[ChannelVersion],
+    mode: Mode,
 ) {
     let list_title = if is_fetching {
-        " Searching for versions... "
+        " Searching for versions... (󱑆) "
     } else {
-        " Select Version (Enter to add) "
+        " Select Input or Version (Enter to add) "
     };
 
-    if versions.is_empty() && !is_fetching {
+    let mut all_items = Vec::new();
+
+    // 1. Add Available Inputs
+    if mode == Mode::Flake {
+        for input in inputs {
+            let channel_name = crate::state::domain::extract_channel(input);
+            if let Some(cv) = current_versions.iter().find(|v| v.channel == channel_name) {
+                let version = cv.locked_version.as_ref().unwrap_or(&cv.version).clone();
+                let rev = input.rev.as_deref().unwrap_or("-------");
+                let short_rev = if rev.len() > 10 { &rev[..10] } else { rev };
+                
+                all_items.push((
+                    version.clone(),
+                    short_rev.to_string(),
+                    false, // Inputs don't have unfree marker here for simplicity, or we could fetch it
+                    Some((input.name.clone(), channel_name))
+                ));
+            }
+        }
+    }
+
+    // 2. Add Historical Versions
+    for v in versions {
+        let hash = if v.hash.len() > 10 { &v.hash[..10] } else { &v.hash };
+        all_items.push((
+            v.version.clone(),
+            hash.to_string(),
+            v.is_unfree,
+            None
+        ));
+    }
+
+    // 3. Sort by version (descending)
+    all_items.sort_by(|a, b| b.0.cmp(&a.0));
+
+    if all_items.is_empty() && !is_fetching {
         let block = Block::default().title(list_title).borders(Borders::ALL);
         frame.render_widget(block, area);
 
@@ -401,7 +456,7 @@ fn render_version_selection(
 
         let empty = Paragraph::new("No versions found.").alignment(Alignment::Center);
         frame.render_widget(empty, vertical_chunks[1]);
-    } else if is_fetching && versions.is_empty() {
+    } else if is_fetching && all_items.is_empty() {
         let block = Block::default().title(list_title).borders(Borders::ALL);
         frame.render_widget(block, area);
 
@@ -420,41 +475,41 @@ fn render_version_selection(
         let header_spans = vec![
             Span::raw("      "), // 1 for border + 3 for selection + 2 for unfree marker space
             Span::styled(
-                format!("{:16}", "Version"),
+                format!("{:30}", "Version (Input)"),
                 Style::default().add_modifier(Modifier::BOLD),
             ),
             Span::raw(" | "),
             Span::styled(
-                format!("{:10}", "Hash"),
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" | "),
-            Span::styled(
-                "Date",
+                "Hash",
                 Style::default().add_modifier(Modifier::BOLD),
             ),
         ];
         let header = Paragraph::new(Line::from(header_spans));
 
-        let items: Vec<ListItem> = versions
-            .iter()
-            .map(|v| {
-                let unfree_marker = if v.is_unfree {
+        let items: Vec<ListItem> = all_items
+            .into_iter()
+            .map(|(version, hash, is_unfree, input_info)| {
+                let unfree_marker = if is_unfree {
                     Span::styled("$ ", Style::default().fg(Color::Green))
                 } else {
                     Span::raw("  ")
                 };
 
+                let (display_name, style) = if let Some((name, channel)) = input_info {
+                    let color = get_channel_color(&channel);
+                    (
+                        format!("{} ({})", version, name),
+                        Style::default().fg(color).add_modifier(Modifier::BOLD)
+                    )
+                } else {
+                    (version, Style::default().add_modifier(Modifier::BOLD))
+                };
+
                 let spans = vec![
                     unfree_marker,
-                    Span::styled(
-                        format!("{:16}", v.version),
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ),
+                    Span::styled(format!("{:30}", display_name), style),
                     Span::raw(" | "),
-                    Span::styled(format!("{:10}", v.hash), Style::default().fg(Color::Cyan)),
-                    Span::raw(" | "),
-                    Span::styled(&v.date, Style::default().fg(Color::DarkGray)),
+                    Span::styled(format!("{:10}", hash), Style::default().fg(Color::Cyan)),
                 ];
                 ListItem::new(Line::from(spans))
             })

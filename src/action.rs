@@ -65,6 +65,7 @@ pub enum Action {
 
     // Version Selection
     SelectVersion(VersionInfo),
+    SelectInputForPackage(String),
     MoveVersionSelectionDown,
     MoveVersionSelectionUp,
 }

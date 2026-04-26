@@ -121,6 +121,9 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             &mut app.ui.version_list_state,
             &app.domain.package_info,
             app.mode == crate::state::Mode::Shell,
+            &app.domain.inputs,
+            app.ui.selected_package_name.as_ref(),
+            app.mode.clone(),
         );
     }
 

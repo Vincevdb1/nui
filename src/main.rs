@@ -136,8 +136,38 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
                     KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveVersionSelectionUp),
                     KeyCode::Enter => {
                         if let Some(i) = app.ui.version_list_state.selected() {
-                            if let Some(version) = app.domain.package_versions.get(i) {
-                                return Some(Action::SelectVersion(version.clone()));
+                            let mut all_items = Vec::new();
+
+                            // 1. Get Available Inputs
+                            if app.mode == crate::state::Mode::Flake {
+                                if let Some(pkg_name) = &app.ui.selected_package_name {
+                                    let result_opt = app.domain.package_search_results.iter().find(|res| &res.name == pkg_name);
+                                    if let Some(result) = result_opt {
+                                        for input in &app.domain.inputs {
+                                            let channel_name = crate::state::domain::extract_channel(input);
+                                            if let Some(cv) = result.versions.iter().find(|v| v.channel == channel_name) {
+                                                let version = cv.locked_version.as_ref().unwrap_or(&cv.version).clone();
+                                                all_items.push((version, Some(input.name.clone()), None));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 2. Get Historical Versions
+                            for v in &app.domain.package_versions {
+                                all_items.push((v.version.clone(), None, Some(v.clone())));
+                            }
+
+                            // 3. Sort by version (descending) - must match render logic
+                            all_items.sort_by(|a, b| b.0.cmp(&a.0));
+
+                            if let Some(item) = all_items.get(i) {
+                                if let Some(input_name) = &item.1 {
+                                    return Some(Action::SelectInputForPackage(input_name.clone()));
+                                } else if let Some(version_info) = &item.2 {
+                                    return Some(Action::SelectVersion(version_info.clone()));
+                                }
                             }
                         }
                         None

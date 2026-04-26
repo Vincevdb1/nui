@@ -328,6 +328,27 @@ pub fn get_tool_version(cmd: &str) -> Option<String> {
     }
 }
 
+pub fn get_available_inputs(
+    inputs: &[Input],
+    package_name: &str,
+    search_results: &[SearchResult],
+) -> Vec<(Input, String)> {
+    let result = match search_results.iter().find(|res| res.name == package_name) {
+        Some(r) => r,
+        None => return Vec::new(),
+    };
+
+    let mut available = Vec::new();
+    for input in inputs {
+        let channel_name = extract_channel(input);
+        if let Some(cv) = result.versions.iter().find(|v| v.channel == channel_name) {
+            let version = cv.locked_version.as_ref().unwrap_or(&cv.version).clone();
+            available.push((input.clone(), version));
+        }
+    }
+    available
+}
+
 #[derive(Default)]
 pub struct DomainData {
     pub nix_files: Vec<NixFile>,

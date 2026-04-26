@@ -467,10 +467,21 @@ impl AppState {
                 self.ui.is_selecting_version = false;
             }
             Action::MoveVersionSelectionDown => {
-                if !self.domain.package_versions.is_empty() {
+                let inputs_len = if self.mode == Mode::Flake {
+                    if let Some(pkg_name) = &self.ui.selected_package_name {
+                        domain::get_available_inputs(&self.domain.inputs, pkg_name, &self.domain.package_search_results).len()
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
+                let total = inputs_len + self.domain.package_versions.len();
+
+                if total > 0 {
                     let i = match self.ui.version_list_state.selected() {
                         Some(i) => {
-                            if i >= self.domain.package_versions.len().saturating_sub(1) {
+                            if i >= total.saturating_sub(1) {
                                 0
                             } else {
                                 i + 1
@@ -482,11 +493,22 @@ impl AppState {
                 }
             }
             Action::MoveVersionSelectionUp => {
-                if !self.domain.package_versions.is_empty() {
+                let inputs_len = if self.mode == Mode::Flake {
+                    if let Some(pkg_name) = &self.ui.selected_package_name {
+                        domain::get_available_inputs(&self.domain.inputs, pkg_name, &self.domain.package_search_results).len()
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
+                let total = inputs_len + self.domain.package_versions.len();
+
+                if total > 0 {
                     let i = match self.ui.version_list_state.selected() {
                         Some(i) => {
                             if i == 0 {
-                                self.domain.package_versions.len().saturating_sub(1)
+                                total.saturating_sub(1)
                             } else {
                                 i - 1
                             }
@@ -850,6 +872,49 @@ impl AppState {
                     self.ui.new_input_url = format!("github:NixOS/nixpkgs/{}", version_info.hash);
                     self.ui.input_cursor = 1;
                 }
+            }
+            Action::SelectInputForPackage(input_name) => {
+                if self.mode == Mode::Shell {
+                    if let Some(pkg_name) = self.ui.selected_package_name.clone() {
+                        let pkg = format!("{}#{}", input_name, pkg_name);
+                        self.shell_packages.push(pkg);
+                    }
+                    self.ui.is_adding_package = false;
+                    self.ui.is_selecting_version = false;
+                    self.ui.selected_package_name = None;
+                    return;
+                }
+
+                if let Some(pkg_name) = self.ui.selected_package_name.clone() {
+                    if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
+                        let flake_path = file.path.clone();
+                        let selected_output_index = self.ui.selected_output_index;
+                        let outputs = self.domain.outputs.clone();
+                        let tx = self.tx.clone();
+
+                        std::thread::spawn(move || {
+                            if let Some(output) = outputs.get(selected_output_index) {
+                                let parts: Vec<&str> = output.path.split('.').collect();
+                                let (system, shell_name) = if parts.len() >= 2 {
+                                    (parts[0], parts[1])
+                                } else {
+                                    ("x86_64-linux", parts[0])
+                                };
+
+                                let prefixed_pkg = format!("{}.legacyPackages.{}.{}", input_name, system, pkg_name);
+                                if let Err(e) = crate::nix::flake::add_package(&flake_path, system, shell_name, &prefixed_pkg) {
+                                    crate::log_output("Error", format!("Failed to add package: {}", e));
+                                } else {
+                                    crate::log_output("Nix", format!("Added package {} to output {}", prefixed_pkg, output.path));
+                                }
+                                let _ = tx.send(Action::RefreshContext);
+                            }
+                        });
+                    }
+                }
+                self.ui.is_adding_package = false;
+                self.ui.is_selecting_version = false;
+                self.ui.selected_package_name = None;
             }
         }
     }
