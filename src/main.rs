@@ -18,8 +18,26 @@ fn main() -> Result<()> {
     color_eyre::install()?;
 
     let args: Vec<String> = std::env::args().collect();
+    
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!("nui - A Nix TUI for managing flakes and shells\n");
+        println!("USAGE:");
+        println!("    nui [COMMAND] [OPTIONS]\n");
+        println!("COMMANDS:");
+        println!("    shell                  Start in shell mode\n");
+        println!("OPTIONS:");
+        println!("    -h, --help             Print help information");
+        println!("    -V, --version          Print version information");
+        return Ok(());
+    }
+
+    if args.iter().any(|arg| arg == "--version" || arg == "-V") {
+        println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     let (mode, shell_packages) = if args.len() > 1 && args[1] == "shell" {
-        (crate::state::Mode::Shell, args[2..].to_vec())
+        (crate::state::Mode::Shell, Vec::new())
     } else if !std::path::Path::new("flake.nix").exists() {
         (crate::state::Mode::Shell, Vec::new())
     } else {
