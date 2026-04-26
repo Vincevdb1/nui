@@ -1,5 +1,5 @@
 pub mod command_log;
-pub mod configurations;
+pub mod outputs;
 pub mod content;
 pub mod context;
 pub mod inputs;

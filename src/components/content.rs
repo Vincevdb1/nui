@@ -15,13 +15,13 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
                 .get(app.ui.selected_nix_file_index)
                 .map(|f| f.name.as_str())
                 .unwrap_or("None");
-            let config_path = app
+            let output_path = app
                 .domain
-                .configurations
-                .get(app.ui.selected_configuration_index)
-                .map(|c| c.path.as_str())
+                .outputs
+                .get(app.ui.selected_output_index)
+                .map(|o| o.path.as_str())
                 .unwrap_or("None");
-            format!(" Content: {} / {} ", context_name, config_path)
+            format!(" Content: {} / {} ", context_name, output_path)
         }
         3 => " Content: Inputs ".to_string(),
         1 => {

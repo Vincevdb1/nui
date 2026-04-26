@@ -5,7 +5,7 @@ use throbber_widgets_tui::ThrobberState;
 pub struct UiState {
     pub selected_index: usize,
     pub selected_nix_file_index: usize,
-    pub selected_configuration_index: usize,
+    pub selected_output_index: usize,
     pub is_adding_input: bool,
     pub is_adding_package: bool,
     pub is_searching_packages: bool,
@@ -35,7 +35,7 @@ impl Default for UiState {
         Self {
             selected_index: 2,
             selected_nix_file_index: 0,
-            selected_configuration_index: 0,
+            selected_output_index: 0,
             is_adding_input: false,
             is_adding_package: false,
             is_searching_packages: false,

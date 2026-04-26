@@ -1,6 +1,6 @@
 use crate::components::command_log::LogEntry;
 use crate::context::NixFile;
-use crate::nix::{Configuration, Input, suggestions::Suggestions};
+use crate::nix::{Input, Output, suggestions::Suggestions};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -274,7 +274,7 @@ pub fn get_tool_version(cmd: &str) -> Option<String> {
 pub struct DomainData {
     pub nix_files: Vec<NixFile>,
     pub inputs: Vec<Input>,
-    pub configurations: Vec<Configuration>,
+    pub outputs: Vec<Output>,
     pub package_info: HashMap<String, (String, String, bool, String)>,
     pub package_search_results: Vec<SearchResult>,
     pub searched_channels: Vec<String>,

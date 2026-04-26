@@ -1,4 +1,4 @@
-use crate::nix::{Configuration, Input};
+use crate::nix::{Input, Output};
 use color_eyre::Result;
 use rnix::{Root, SyntaxKind, SyntaxNode};
 use serde::Deserialize;
@@ -63,7 +63,103 @@ pub fn extract_inputs(content: &str, lock_content: Option<&str>) -> Vec<Input> {
     inputs.into_values().collect()
 }
 
-pub fn extract_configurations(content: &str) -> Vec<Configuration> {
+pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
+    let mut configs = Vec::new();
+
+    let output = std::process::Command::new("nix")
+        .args([
+            "flake",
+            "show",
+            flake_path.to_str().unwrap_or("."),
+            "--json",
+            "--impure",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(color_eyre::eyre::eyre!(
+            "Failed to run nix flake show: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+
+    // Also extract from AST to get content and names
+    let flake_nix_path = flake_path.join("flake.nix");
+    let ast_configs = if let Ok(content) = std::fs::read_to_string(flake_nix_path) {
+        extract_outputs(&content)
+    } else {
+        Vec::new()
+    };
+
+    if let Some(obj) = json.as_object() {
+        for (config_type, val) in obj {
+            if !matches!(
+                config_type.as_str(),
+                "nixosConfigurations"
+                    | "homeConfigurations"
+                    | "devShells"
+                    | "darwinConfigurations"
+                    | "packages"
+                    | "legacyPackages"
+            ) {
+                continue;
+            }
+
+            if let Some(inner_obj) = val.as_object() {
+                for (path, inner_val) in inner_obj {
+                    // For devShells, packages, legacyPackages, it's <type>.<system>.<name>
+                    if matches!(config_type.as_str(), "devShells" | "packages" | "legacyPackages") {
+                        if let Some(systems_obj) = inner_val.as_object() {
+                            for (name, _) in systems_obj {
+                                let full_path = format!("{}.{}", path, name);
+                                let mut config = Output {
+                                    path: full_path.clone(),
+                                    name: None,
+                                    config_type: config_type.clone(),
+                                    content: None,
+                                };
+
+                                // Try to find match in AST configs
+                                if let Some(ast_match) = ast_configs.iter().find(|c| {
+                                    c.config_type == *config_type && c.path == full_path
+                                }) {
+                                    config.name = ast_match.name.clone();
+                                    config.content = ast_match.content.clone();
+                                }
+
+                                configs.push(config);
+                            }
+                        }
+                    } else {
+                        let mut config = Output {
+                            path: path.clone(),
+                            name: None,
+                            config_type: config_type.clone(),
+                            content: None,
+                        };
+
+                        // Try to find match in AST configs
+                        if let Some(ast_match) = ast_configs
+                            .iter()
+                            .find(|c| c.config_type == *config_type && c.path == *path)
+                        {
+                            config.name = ast_match.name.clone();
+                            config.content = ast_match.content.clone();
+                        }
+
+                        configs.push(config);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(configs)
+}
+
+pub fn extract_outputs(content: &str) -> Vec<Output> {
     let mut configs = Vec::new();
 
     if let Ok(outputs_val) = nix_editor::read::readvalue(content, "outputs") {
@@ -72,6 +168,8 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
         let ast = Root::parse(&outputs_val);
         use rnix::SyntaxKind;
         let mut body_val = outputs_val.clone();
+        
+        // Find the lambda body, and if it's a let-in, go into the body of the let-in
         for node in ast.syntax().descendants() {
             if node.kind() == SyntaxKind::NODE_LAMBDA {
                 if let Some(body) = node.children().find(|c| {
@@ -84,51 +182,78 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
                     )
                 }) {
                     body_val = body.to_string();
-                }
-            }
-            if node.kind() == SyntaxKind::NODE_LET_IN {
-                for child in node.children() {
-                    if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
-                        let mut key = String::new();
-                        let mut val = String::new();
-                        if let Some(path) = child
-                            .children()
-                            .find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH)
-                        {
-                            key = path.text().to_string().trim().to_string();
+                    
+                    // If the body is a let-in, look for replacements and use the actual body
+                    if body.kind() == SyntaxKind::NODE_LET_IN {
+                        for child in body.children() {
+                            if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                                let mut key = String::new();
+                                let mut val = String::new();
+                                if let Some(path) = child
+                                    .children()
+                                    .find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH)
+                                {
+                                    key = path.text().to_string().trim().to_string();
+                                }
+                                if let Some(v) = child
+                                    .children()
+                                    .find(|c| c.kind() != SyntaxKind::NODE_ATTRPATH)
+                                {
+                                    val = v.text().to_string().trim().trim_matches('"').to_string();
+                                }
+                                if !key.is_empty() && !val.is_empty() {
+                                    replacements.insert(format!("${{{}}}", key), val);
+                                }
+                            }
                         }
-                        if let Some(v) = child
-                            .children()
-                            .find(|c| c.kind() != SyntaxKind::NODE_ATTRPATH)
-                        {
-                            val = v.text().to_string().trim().trim_matches('"').to_string();
-                        }
-                        if !key.is_empty() && !val.is_empty() {
-                            replacements.insert(format!("${{{}}}", key), val);
+                        
+                        // Use the last child as the body of the let-in
+                        if let Some(actual_body) = body.children().last() {
+                            body_val = actual_body.to_string();
                         }
                     }
                 }
+                break;
             }
         }
 
         if let Ok(collection) = nix_editor::parse::get_collection(body_val) {
             for (key, val) in collection {
-                let parts: Vec<&str> = key.split('.').collect();
+                let mut parts = Vec::new();
+                let mut current = String::new();
+                let mut in_quotes = false;
+                for c in key.chars() {
+                    if c == '"' {
+                        in_quotes = !in_quotes;
+                        current.push(c);
+                    } else if c == '.' && !in_quotes {
+                        parts.push(current.clone());
+                        current.clear();
+                    } else {
+                        current.push(c);
+                    }
+                }
+                parts.push(current);
+
                 if !parts.is_empty() {
-                    let config_type = parts[0];
+                    let config_type = &parts[0];
                     if matches!(
-                        config_type,
+                        config_type.as_str(),
                         "nixosConfigurations"
                             | "homeConfigurations"
                             | "devShells"
                             | "darwinConfigurations"
+                            | "packages"
+                            | "legacyPackages"
                     ) {
                         let mut path_parts = Vec::new();
                         for part in &parts[1..] {
-                            if matches!(*part, "packages" | "buildInputs" | "nativeBuildInputs") {
+                            if matches!(part.as_str(), "packages" | "buildInputs" | "nativeBuildInputs") {
                                 break;
                             }
-                            path_parts.push(*part);
+                            // Strip quotes from the part if they exist
+                            let cleaned_part = part.trim_matches('"');
+                            path_parts.push(cleaned_part);
                         }
                         let mut path = path_parts.join(".");
 
@@ -136,18 +261,42 @@ pub fn extract_configurations(content: &str) -> Vec<Configuration> {
                             path = path.replace(k, v);
                         }
 
-                        let mut name_opt = None;
+                        // Try to look into the value if it's a nested set and not obviously a derivation
+                        if let Ok(inner_collection) = nix_editor::parse::get_collection(val.clone()) {
+                            // If it's a system-specific set (like devShells.${system}), we should look inside
+                            for (inner_key, inner_val) in inner_collection {
+                                let cleaned_inner_key = inner_key.trim_matches('"').to_string();
+                                let mut name_opt = None;
+                                if let Ok(name_val) = nix_editor::read::readvalue(&inner_val, "name") {
+                                    name_opt = Some(name_val.trim_matches('"').to_string());
+                                }
+                                
+                                let full_path = if path.is_empty() {
+                                    cleaned_inner_key
+                                } else {
+                                    format!("{}.{}", path, cleaned_inner_key)
+                                };
 
-                        if let Ok(name_val) = nix_editor::read::readvalue(&val, "name") {
-                            name_opt = Some(name_val.trim_matches('"').to_string());
+                                configs.push(Output {
+                                    path: full_path,
+                                    name: name_opt,
+                                    config_type: config_type.to_string(),
+                                    content: Some(inner_val),
+                                });
+                            }
+                        } else {
+                            let mut name_opt = None;
+                            if let Ok(name_val) = nix_editor::read::readvalue(&val, "name") {
+                                name_opt = Some(name_val.trim_matches('"').to_string());
+                            }
+
+                            configs.push(Output {
+                                path,
+                                name: name_opt,
+                                config_type: config_type.to_string(),
+                                content: Some(val),
+                            });
                         }
-
-                        configs.push(Configuration {
-                            path,
-                            name: name_opt,
-                            config_type: config_type.to_string(),
-                            content: Some(val),
-                        });
                     }
                 }
             }
@@ -881,7 +1030,7 @@ pub fn remove_package(flake_path: &Path, system: &str, shell_name: &str, pkg_nam
     if let Some((input_name, _)) = pkg_name.split_once('.') {
         let inputs = extract_inputs(&new_content, None);
         if inputs.iter().any(|i| i.name == input_name) {
-            let configs = extract_configurations(&new_content);
+            let configs = extract_outputs(&new_content);
             let mut used = false;
             for config in &configs {
                 if let Some(config_content) = &config.content {

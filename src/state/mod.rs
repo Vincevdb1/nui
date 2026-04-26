@@ -6,7 +6,9 @@ pub use ui::UiState;
 
 use crate::action::Action;
 use crate::context::find_nix_files;
-use crate::nix::flake::{add_nixpkgs_input, add_package, extract_configurations, extract_inputs};
+use crate::nix::flake::{
+    add_nixpkgs_input, add_package, extract_inputs, fetch_outputs,
+};
 use crate::nix::suggestions::Suggestions;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -42,22 +44,23 @@ impl AppState {
         crate::components::command_log::init_logger(tx.clone());
         crate::command_log("Initializing NUI Application...");
 
-        let (nix_files, inputs, configurations) = if mode == Mode::Flake {
+        let (nix_files, inputs, outputs) = if mode == Mode::Flake {
             let nix_files = find_nix_files();
             crate::log_output("Filesystem", format!("Found {} nix files", nix_files.len()));
 
-            let (inputs, configurations) = if let Some(file) = nix_files.first() {
+            let (inputs, outputs) = if let Some(file) = nix_files.first() {
                 let flake_content = std::fs::read_to_string(&file.path).unwrap_or_default();
                 let lock_path = file.path.parent().unwrap_or(std::path::Path::new(".")).join("flake.lock");
                 let lock_content = std::fs::read_to_string(lock_path).ok();
                 (
                     extract_inputs(&flake_content, lock_content.as_deref()),
-                    extract_configurations(&flake_content),
+                    fetch_outputs(file.path.parent().unwrap_or(std::path::Path::new(".")))
+                        .unwrap_or_default(),
                 )
             } else {
                 (Vec::new(), Vec::new())
             };
-            (nix_files, inputs, configurations)
+            (nix_files, inputs, outputs)
         } else {
             (Vec::new(), Vec::new(), Vec::new())
         };
@@ -69,7 +72,7 @@ impl AppState {
             domain: DomainData {
                 nix_files,
                 inputs,
-                configurations,
+                outputs,
                 nh_version: domain::get_tool_version("nh"),
                 nxv_version: domain::get_tool_version("nxv"),
                 ..Default::default()
@@ -146,7 +149,7 @@ impl AppState {
                     // Clear domain data that is specific to Flake mode
                     self.domain.nix_files = Vec::new();
                     self.domain.inputs = Vec::new();
-                    self.domain.configurations = Vec::new();
+                    self.domain.outputs = Vec::new();
                 } else {
                     self.mode = Mode::Flake;
                     self.ui.selected_index = 1;
@@ -161,7 +164,10 @@ impl AppState {
                         let lock_path = file.path.parent().unwrap_or(std::path::Path::new(".")).join("flake.lock");
                         let lock_content = std::fs::read_to_string(lock_path).ok();
                         self.domain.inputs = extract_inputs(&flake_content, lock_content.as_deref());
-                        self.domain.configurations = extract_configurations(&flake_content);
+                        self.domain.outputs = fetch_outputs(
+                            file.path.parent().unwrap_or(std::path::Path::new(".")),
+                        )
+                        .unwrap_or_default();
                         self.fetch_package_details();
                     }
                 }
@@ -190,10 +196,10 @@ impl AppState {
                     }
                 }
                 4 => {
-                    if !self.domain.configurations.is_empty() {
-                        self.ui.selected_configuration_index =
-                            (self.ui.selected_configuration_index + 1)
-                                % self.domain.configurations.len();
+                    if !self.domain.outputs.is_empty() {
+                        self.ui.selected_output_index =
+                            (self.ui.selected_output_index + 1)
+                                % self.domain.outputs.len();
                         self.fetch_package_details();
                     }
                 }
@@ -243,12 +249,12 @@ impl AppState {
                     }
                 }
                 4 => {
-                    if !self.domain.configurations.is_empty() {
-                        self.ui.selected_configuration_index =
-                            if self.ui.selected_configuration_index == 0 {
-                                self.domain.configurations.len() - 1
+                    if !self.domain.outputs.is_empty() {
+                        self.ui.selected_output_index =
+                            if self.ui.selected_output_index == 0 {
+                                self.domain.outputs.len() - 1
                             } else {
-                                self.ui.selected_configuration_index - 1
+                                self.ui.selected_output_index - 1
                             };
                         self.fetch_package_details();
                     }
@@ -305,12 +311,12 @@ impl AppState {
             Action::RemoveFlakePackage(pkg_name) => {
                 if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
                     let flake_path = file.path.clone();
-                    if let Some(config) = self
+                    if let Some(output) = self
                         .domain
-                        .configurations
-                        .get(self.ui.selected_configuration_index)
+                        .outputs
+                        .get(self.ui.selected_output_index)
                     {
-                        let parts: Vec<&str> = config.path.split('.').collect();
+                        let parts: Vec<&str> = output.path.split('.').collect();
                         let system = parts.get(0).copied().unwrap_or("x86_64-linux").to_string();
                         let shell_name = parts.get(1).copied().unwrap_or("default").to_string();
 
@@ -394,12 +400,12 @@ impl AppState {
                                 self.domain.nix_files.get(self.ui.selected_nix_file_index)
                             {
                                 let flake_path = file.path.clone();
-                                if let Some(config) = self
+                                if let Some(output) = self
                                     .domain
-                                    .configurations
-                                    .get(self.ui.selected_configuration_index)
+                                    .outputs
+                                    .get(self.ui.selected_output_index)
                                 {
-                                    let parts: Vec<&str> = config.path.split('.').collect();
+                                    let parts: Vec<&str> = output.path.split('.').collect();
                                     let system = parts.get(0).copied().unwrap_or("x86_64-linux").to_string();
                                     let shell_name = parts.get(1).copied().unwrap_or("default").to_string();
 
@@ -658,12 +664,12 @@ impl AppState {
                         self.ui.package_fetch_error = None;
 
                         let mut source_map = HashMap::new();
-                        if let Some(config) = self
+                        if let Some(output) = self
                             .domain
-                            .configurations
-                            .get(self.ui.selected_configuration_index)
+                            .outputs
+                            .get(self.ui.selected_output_index)
                         {
-                            if let Some(content) = &config.content {
+                            if let Some(content) = &output.content {
                                 let attrs =
                                     crate::nix::flake::extract_package_attribute_strings(content);
                                 for attr in attrs {
@@ -699,9 +705,12 @@ impl AppState {
                     let lock_path = file.path.parent().unwrap_or(std::path::Path::new(".")).join("flake.lock");
                     let lock_content = std::fs::read_to_string(lock_path).ok();
                     self.domain.inputs = extract_inputs(&content, lock_content.as_deref());
-                    self.domain.configurations = extract_configurations(&content);
-                    if self.ui.selected_configuration_index >= self.domain.configurations.len() {
-                        self.ui.selected_configuration_index = 0;
+                    self.domain.outputs = fetch_outputs(
+                        file.path.parent().unwrap_or(std::path::Path::new(".")),
+                    )
+                    .unwrap_or_default();
+                    if self.ui.selected_output_index >= self.domain.outputs.len() {
+                        self.ui.selected_output_index = 0;
                     }
                     self.fetch_package_details();
                 }
@@ -777,8 +786,8 @@ impl AppState {
                 if let Some(pkg_name) = self.ui.selected_package_name.clone() {
                     if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
                         let flake_path = file.path.clone();
-                        let selected_config_index = self.ui.selected_configuration_index;
-                        let configurations = self.domain.configurations.clone();
+                        let selected_output_index = self.ui.selected_output_index;
+                        let outputs = self.domain.outputs.clone();
                         let tx = self.tx.clone();
 
                         std::thread::spawn(move || {
@@ -790,9 +799,9 @@ impl AppState {
                                 crate::log_output("Error", format!("Failed to write flake.nix: {}", e));
                             } else {
                                 // 2. Add package
-                                if let Some(config) = configurations.get(selected_config_index) {
-                                    if config.config_type == "devShells" {
-                                        let parts: Vec<&str> = config.path.split('.').collect();
+                                if let Some(output) = outputs.get(selected_output_index) {
+                                    if output.config_type == "devShells" {
+                                        let parts: Vec<&str> = output.path.split('.').collect();
                                         let (system, shell_name) = if parts.len() >= 2 {
                                             (parts[0], parts[1])
                                         } else {
@@ -825,7 +834,7 @@ impl AppState {
                                             "Warning",
                                             format!(
                                                 "Version pinning is currently only supported for devShells, not {}",
-                                                config.config_type
+                                                output.config_type
                                             ),
                                         );
                                     }
@@ -849,17 +858,17 @@ impl AppState {
     }
 
     fn fetch_package_details(&mut self) {
-        if let Some(config) = self
+        if let Some(output) = self
             .domain
-            .configurations
-            .get(self.ui.selected_configuration_index)
+            .outputs
+            .get(self.ui.selected_output_index)
         {
-            let config_type = config.config_type.clone();
-            let config_name = config.path.clone();
+            let output_type = output.config_type.clone();
+            let output_name = output.path.clone();
 
             crate::log_action(
-                format!("Fetching package details for {}", config_name),
-                format!("Config Type: {}", config_type),
+                format!("Fetching package details for {}", output_name),
+                format!("Output Type: {}", output_type),
             );
 
             let flake_path =
@@ -883,7 +892,7 @@ impl AppState {
             let tx = self.tx.clone();
             std::thread::spawn(move || {
                 let res =
-                    crate::nix::Package::fetch_from_config(&flake_path, &config_type, &config_name);
+                    crate::nix::Package::fetch_from_output(&flake_path, &output_type, &output_name);
                 let _ = tx.send(Action::SetPackageDetails(res));
             });
         }

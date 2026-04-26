@@ -12,61 +12,59 @@ pub struct Package {
 }
 
 impl Package {
-    pub fn fetch_from_config(
+    pub fn fetch_from_output(
         flake_path: &str,
-        config_type: &str,
-        config_name: &str,
+        output_type: &str,
+        output_name: &str,
     ) -> Result<HashMap<String, (String, String, bool, String)>, String> {
         let mut results = HashMap::new();
 
-        let target_attr = if config_type == "devShells" {
-            let parts: Vec<&str> = config_name.split('.').collect();
-            if parts.len() == 2 {
-                format!("{}.\"{}\".\"{}\"", config_type, parts[0], parts[1])
-            } else {
-                format!("{}.\"{}\"", config_type, config_name)
-            }
-        } else if matches!(
-            config_type,
-            "nixosConfigurations" | "homeConfigurations" | "darwinConfigurations"
-        ) {
-            format!("{}.\"{}\"", config_type, config_name)
-        } else {
-            return Ok(results);
-        };
+        let quoted_name = output_name
+            .split('.')
+            .map(|s| format!("\"{}\"", s))
+            .collect::<Vec<_>>()
+            .join(".");
 
-        let extract_logic = match config_type {
-            "nixosConfigurations" | "darwinConfigurations" => {
-                "extractList (t.config.environment.systemPackages or [])"
-            }
-            "homeConfigurations" => {
-                "extractList (t.config.home.packages or (t.home.packages or []))"
-            }
-            "devShells" => "extractList (t.buildInputs or [])",
-            _ => "extractList (if builtins.isList l then l else [])",
+        let (target_attr, extract_logic) = match output_type {
+            "nixosConfigurations" | "darwinConfigurations" => (
+                format!("{}.{}.config.environment.systemPackages", output_type, quoted_name),
+                "extractList t",
+            ),
+            "homeConfigurations" => (
+                format!("{}.{}", output_type, quoted_name),
+                "extractList (t.config.home.packages or (t.home.packages or []))",
+            ),
+            "devShells" => (
+                format!("{}.{}", output_type, quoted_name),
+                "extractList ((t.packages or []) ++ (t.buildInputs or []) ++ (t.nativeBuildInputs or []))",
+            ),
+            _ => return Ok(results),
         };
 
         let apply_expr = format!(
             r#"p: let
           getPkgInfo = p: let 
             tried = builtins.tryEval p;
-          in if tried.success && (p ? pname || p ? name) then {{
-            pname = if p ? pname then p.pname else (builtins.parseDrvName p.name).name;
-            name = p.name or "";
-            version = p.version or (builtins.parseDrvName p.name).version;
-            description = p.meta.description or "";
-            is_unfree = if p ? meta && p.meta ? license then 
-              let 
-                lic = p.meta.license;
-                isUnfree = l: if builtins.isAttrs l then l.free or true == false else false;
-              in if builtins.isList lic then builtins.any isUnfree lic else isUnfree lic
-            else false;
-          }} else null;
+          in if tried.success && (tried.value ? pname || tried.value ? name) then
+            let v = tried.value; in {{
+              pname = if v ? pname then v.pname else (builtins.parseDrvName v.name).name;
+              name = v.name or "";
+              version = v.version or (builtins.parseDrvName v.name).version;
+              description = v.meta.description or "";
+              is_unfree = if v ? meta && v.meta ? license then 
+                let 
+                  lic = v.meta.license;
+                  isUnfree = l: if builtins.isAttrs l then l.free or true == false else false;
+                in if builtins.isList lic then builtins.any isUnfree lic else isUnfree lic
+              else false;
+            }}
+          else null;
           extractList = l: if builtins.isList l then builtins.filter (x: x != null) (map getPkgInfo l) else [];
           extract = t: {};
         in extract p"#,
             extract_logic
         );
+
 
         let attr_path = format!("{}#{}", flake_path, target_attr);
 
@@ -76,6 +74,7 @@ impl Package {
         );
 
         let mut command = Command::new("nix");
+        command.env("NIXPKGS_ALLOW_UNFREE", "1");
         command.args([
             "eval",
             &attr_path,

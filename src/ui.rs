@@ -53,12 +53,12 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             col1_chunks[2],
             app.ui.selected_index == 3,
         );
-        configurations::render(
-            &app.domain.configurations,
+        outputs::render(
+            &app.domain.outputs,
             frame,
             col1_chunks[3],
             app.ui.selected_index == 4,
-            app.ui.selected_configuration_index,
+            app.ui.selected_output_index,
         );
 
         if app.ui.selected_index != 5 {
@@ -88,7 +88,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             1 => "Tab: Switch focus | m: Switch Mode | 1-5: Select tab | q: Quit",
             2 => "a: Add | d: Remove | i: Info | m: Mode | Shift-j/k: Select | j/k: Navigate pkgs | Tab: Focus | q: Quit",
             3 => "a: Add Input | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
-            4 => "j/k: Select Config | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
+            4 => "j/k: Select Output | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
             5 => "j/k: Scroll Logs | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
             _ => "Press 'm' to switch mode, 'Tab' to switch focus, 'q' to quit",
         }
