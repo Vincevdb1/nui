@@ -17,10 +17,12 @@ pub fn render(
     results: &[SearchResult],
     channels: &[String],
     is_searching: bool,
+    error: Option<&str>,
     list_state: &mut ListState,
     is_selecting_version: bool,
     is_fetching_versions: bool,
     versions: &[VersionInfo],
+    version_fetch_error: Option<&str>,
     version_list_state: &mut ListState,
     installed_packages: &HashMap<String, (String, String, bool, String)>,
     is_shell_mode: bool,
@@ -69,6 +71,7 @@ pub fn render(
             frame,
             chunks[1],
             is_fetching_versions,
+            version_fetch_error,
             versions,
             version_list_state,
             inputs,
@@ -80,6 +83,7 @@ pub fn render(
             frame,
             chunks[1],
             is_searching,
+            error,
             results,
             channels,
             list_state,
@@ -101,6 +105,7 @@ fn render_package_search(
     frame: &mut Frame,
     area: Rect,
     is_searching: bool,
+    error: Option<&str>,
     results: &[SearchResult],
     channels: &[String],
     list_state: &mut ListState,
@@ -121,13 +126,24 @@ fn render_package_search(
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Percentage(50),
-                Constraint::Length(1),
+                Constraint::Length(if error.is_some() { 4 } else { 1 }),
                 Constraint::Percentage(50),
             ])
             .split(area);
 
-        let empty = Paragraph::new("No results found.").alignment(Alignment::Center);
-        frame.render_widget(empty, vertical_chunks[1]);
+        if let Some(err) = error {
+            let error_text = vec![
+                Line::from(vec![Span::styled("Error searching packages:", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))]),
+                Line::from(vec![Span::styled(err, Style::default().fg(Color::Red))]),
+                Line::from(""),
+                Line::from(vec![Span::styled("Please check your internet connection.", Style::default().fg(Color::DarkGray))]),
+            ];
+            let error_para = Paragraph::new(error_text).alignment(Alignment::Center);
+            frame.render_widget(error_para, vertical_chunks[1]);
+        } else {
+            let empty = Paragraph::new("No results found.").alignment(Alignment::Center);
+            frame.render_widget(empty, vertical_chunks[1]);
+        }
     } else {
         // Calculate widths for each column
         let max_name_width = results
@@ -394,6 +410,7 @@ fn render_version_selection(
     frame: &mut Frame,
     area: Rect,
     is_fetching: bool,
+    error: Option<&str>,
     versions: &[VersionInfo],
     list_state: &mut ListState,
     inputs: &[Input],
@@ -407,6 +424,8 @@ fn render_version_selection(
     };
 
     let mut all_items = Vec::new();
+
+    // ... (rest of all_items population remains same)
 
     // 1. Add Available Inputs
     if mode == Mode::Flake {
@@ -449,13 +468,24 @@ fn render_version_selection(
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Percentage(50),
-                Constraint::Length(1),
+                Constraint::Length(if error.is_some() { 4 } else { 1 }),
                 Constraint::Percentage(50),
             ])
             .split(area);
 
-        let empty = Paragraph::new("No versions found.").alignment(Alignment::Center);
-        frame.render_widget(empty, vertical_chunks[1]);
+        if let Some(err) = error {
+            let error_text = vec![
+                Line::from(vec![Span::styled("Error fetching versions:", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))]),
+                Line::from(vec![Span::styled(err, Style::default().fg(Color::Red))]),
+                Line::from(""),
+                Line::from(vec![Span::styled("Please check your internet connection.", Style::default().fg(Color::DarkGray))]),
+            ];
+            let error_para = Paragraph::new(error_text).alignment(Alignment::Center);
+            frame.render_widget(error_para, vertical_chunks[1]);
+        } else {
+            let empty = Paragraph::new("No versions found.").alignment(Alignment::Center);
+            frame.render_widget(empty, vertical_chunks[1]);
+        }
     } else if is_fetching && all_items.is_empty() {
         let block = Block::default().title(list_title).borders(Borders::ALL);
         frame.render_widget(block, area);

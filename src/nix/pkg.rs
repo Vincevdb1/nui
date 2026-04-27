@@ -118,7 +118,7 @@ impl Package {
             }
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            crate::log_output("Nix Error", stderr.to_string());
+            crate::log_output("Nix Error", format!("{}. This might be due to a connection issue or an evaluation error.", stderr));
             Err(stderr.to_string())
         }
     }

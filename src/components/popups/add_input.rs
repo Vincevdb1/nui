@@ -78,13 +78,25 @@ pub fn render(
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Percentage(50),
-                Constraint::Length(1),
+                Constraint::Length(if suggestions.error.is_some() { 4 } else { 1 }),
                 Constraint::Percentage(50),
             ])
             .split(area);
 
-        let empty = Paragraph::new("No suggestions found.").alignment(Alignment::Center);
-        frame.render_widget(empty, vertical_chunks[1]);
+        if let Some(err) = &suggestions.error {
+            use ratatui::text::{Line, Span};
+            let error_text = vec![
+                Line::from(vec![Span::styled("Error fetching suggestions:", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))]),
+                Line::from(vec![Span::styled(err, Style::default().fg(Color::Red))]),
+                Line::from(""),
+                Line::from(vec![Span::styled("Please check your internet connection.", Style::default().fg(Color::DarkGray))]),
+            ];
+            let error_para = Paragraph::new(error_text).alignment(Alignment::Center);
+            frame.render_widget(error_para, vertical_chunks[1]);
+        } else {
+            let empty = Paragraph::new("No suggestions found.").alignment(Alignment::Center);
+            frame.render_widget(empty, vertical_chunks[1]);
+        }
     } else {
         let items: Vec<ListItem> = suggestions
             .filtered

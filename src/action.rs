@@ -42,7 +42,7 @@ pub enum Action {
 
     // Background Task Results
     Log(LogEntry),
-    SetSuggestions(Vec<(String, String)>),
+    SetSuggestions(Result<Vec<(String, String)>, String>),
     SetPackageSearchResults(Result<Vec<SearchResult>, String>),
     SetPackageDetails(Result<HashMap<String, (String, String, bool, String)>, String>),
     SetVersions(Result<Vec<VersionInfo>, String>),

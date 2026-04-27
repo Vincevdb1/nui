@@ -86,7 +86,7 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
 
     if !output.status.success() {
         return Err(color_eyre::eyre::eyre!(
-            "Failed to run nix flake show: {}",
+            "Failed to run nix flake show: {}. This might be due to a connection issue or an invalid flake.",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
