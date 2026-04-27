@@ -109,8 +109,6 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
                     | "homeConfigurations"
                     | "devShells"
                     | "darwinConfigurations"
-                    | "packages"
-                    | "legacyPackages"
             ) {
                 continue;
             }
@@ -163,6 +161,22 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
             }
         }
     }
+
+    configs.sort_by(|a, b| {
+        let a_is_default_shell = a.config_type == "devShells" && a.path.ends_with(".default");
+        let b_is_default_shell = b.config_type == "devShells" && b.path.ends_with(".default");
+        if a_is_default_shell != b_is_default_shell {
+            return b_is_default_shell.cmp(&a_is_default_shell);
+        }
+
+        let a_is_shell = a.config_type == "devShells";
+        let b_is_shell = b.config_type == "devShells";
+        if a_is_shell != b_is_shell {
+            return b_is_shell.cmp(&a_is_shell);
+        }
+
+        a.config_type.cmp(&b.config_type).then(a.path.cmp(&b.path))
+    });
 
     Ok(configs)
 }

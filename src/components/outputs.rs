@@ -12,17 +12,37 @@ pub fn render(
         .iter()
         .enumerate()
         .map(|(i, output)| {
-            let style = if i == selected_index {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
+            let (style, prefix_style) = if i == selected_index {
+                (
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                )
             } else {
-                Style::default()
+                (Style::default(), Style::default().fg(Color::DarkGray))
             };
-            ListItem::new(Line::from(vec![Span::styled(
-                format!("• {}", output.path),
-                style,
-            )]))
+
+            let type_prefix = match output.config_type.as_str() {
+                "devShells" => "SHELL",
+                "nixosConfigurations" => "OS",
+                "homeConfigurations" => "HM",
+                "darwinConfigurations" => "DRWN",
+                _ => "???",
+            };
+
+            let display_path = if output.config_type == "devShells" {
+                if let Some((system, name)) = output.path.split_once('.') {
+                    format!("{} ({})", name, system)
+                } else {
+                    output.path.clone()
+                }
+            } else {
+                output.path.clone()
+            };
+
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("[{}] ", type_prefix), prefix_style),
+                Span::styled(display_path, style),
+            ]))
         })
         .collect();
 
