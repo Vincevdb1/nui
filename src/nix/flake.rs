@@ -613,8 +613,16 @@ pub fn extract_package_attribute_strings(content: &str) -> Vec<String> {
                 let path_text = attrpath.to_string().trim().to_string();
                 if path_text == "packages" || path_text == "buildInputs" || path_text == "nativeBuildInputs" {
                     if let Some(val) = node.children().find(|c| !matches!(c.kind(), SyntaxKind::NODE_ATTRPATH | SyntaxKind::TOKEN_COMMENT | SyntaxKind::TOKEN_WHITESPACE)) {
-                        if val.kind() == SyntaxKind::NODE_LIST {
-                            for item in val.children() {
+                        let list_node = if val.kind() == SyntaxKind::NODE_WITH {
+                            val.children().find(|c| c.kind() == SyntaxKind::NODE_LIST)
+                        } else if val.kind() == SyntaxKind::NODE_LIST {
+                            Some(val)
+                        } else {
+                            None
+                        };
+
+                        if let Some(list) = list_node {
+                            for item in list.children() {
                                 attrs.push(item.to_string().trim().to_string());
                             }
                         }

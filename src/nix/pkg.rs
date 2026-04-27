@@ -43,13 +43,14 @@ impl Package {
 
         let apply_expr = format!(
             r#"p: let
-          getPkgInfo = p: let 
+          getPkgInfo = attr: p: let 
             tried = builtins.tryEval p;
           in if tried.success && (tried.value ? pname || tried.value ? name) then
             let v = tried.value; 
                 pname = if v ? pname then v.pname else (builtins.parseDrvName v.name).name;
-            in if (builtins.match ".*\\.sh" pname != null) || (builtins.match ".*-hook" pname != null) then null else {{
+            in if (pname == "builder.sh") || (pname == "default-builder.sh") || (builtins.match ".*-hook.*" pname != null) then null else {{
               pname = pname;
+              attribute = attr;
               name = v.name or "";
               version = v.version or (builtins.parseDrvName v.name).version;
               description = v.meta.description or "";
@@ -61,7 +62,8 @@ impl Package {
               else false;
             }}
           else null;
-          extractList = l: if builtins.isList l then builtins.filter (x: x != null) (map getPkgInfo l) else [];
+          extractList = l: if builtins.isList l then builtins.filter (x: x != null && (x.version or "") != "") (map (x: getPkgInfo "" x) l) else [];
+          extractMap = m: if builtins.isAttrs m then builtins.filter (x: x != null) (builtins.attrValues (builtins.mapAttrs getPkgInfo m)) else [];
           extract = t: {};
         in extract p"#,
             extract_logic
@@ -91,6 +93,7 @@ impl Package {
             #[derive(Deserialize)]
             struct EvalPkg {
                 pname: String,
+                attribute: String,
                 name: String,
                 version: String,
                 description: String,
@@ -100,7 +103,9 @@ impl Package {
             if let Ok(eval_results) = serde_json::from_slice::<Vec<EvalPkg>>(&output.stdout) {
                 let count = eval_results.len();
                 for pkg in eval_results {
-                    let key = if !pkg.pname.is_empty() {
+                    let key = if !pkg.attribute.is_empty() {
+                        pkg.attribute
+                    } else if !pkg.pname.is_empty() {
                         pkg.pname
                     } else {
                         pkg.name

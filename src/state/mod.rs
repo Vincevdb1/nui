@@ -773,10 +773,21 @@ impl AppState {
                         }
 
                         for (name, (desc, ver, unfree, _)) in results {
-                            let source = source_map.get(&name).cloned().unwrap_or_default();
-                            self.domain
-                                .package_info
-                                .insert(name, (desc, ver, unfree, source));
+                            let source = source_map.get(&name).cloned().unwrap_or_else(|| {
+                                // Fallback: check if any attribute starts with this name (pname case)
+                                source_map.iter()
+                                    .find(|(k, _)| name.starts_with(*k) || k.starts_with(&name))
+                                    .map(|(_, v)| v.clone())
+                                    .unwrap_or_default()
+                            });
+                            
+                            // Only add if we found a source OR it has a non-empty version
+                            // This helps filter out internal hooks that evaluation might pull in
+                            if !source.is_empty() || !ver.is_empty() {
+                                self.domain
+                                    .package_info
+                                    .insert(name, (desc, ver, unfree, source));
+                            }
                         }
                         self.check_for_updates();
                     }
