@@ -61,7 +61,9 @@ fn main() -> Result<()> {
                     pkg
                 };
 
-                if pkg_base.contains('#') {
+                if pkg_base.starts_with("nixpkgs/") {
+                    args.push(format!("github:NixOS/nixpkgs/{}", &pkg_base[8..]));
+                } else if pkg_base.contains('#') {
                     args.push(crate::nix::flake::normalize_flake_ref(pkg_base));
                 } else {
                     args.push(format!("github:NixOS/nixpkgs/nixpkgs-unstable#{}", pkg_base));
