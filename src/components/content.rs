@@ -65,7 +65,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
             }
         }
         2 | 4 => packages::render(app, frame, inner_area),
-        3 => inputs::render(&app.domain.inputs, frame, inner_area),
+        3 => inputs::render(app, frame, inner_area),
         _ => {
             let p = Paragraph::new("Select a box in the first column to view content.")
                 .alignment(Alignment::Center);

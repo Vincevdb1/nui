@@ -279,10 +279,22 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
                 }
                 None
             }
+            KeyCode::Char('d') if app.ui.selected_index == 3 => {
+                if let Some(i) = app.ui.input_table_state.selected() {
+                    if i > 0 && i <= app.domain.inputs.len() {
+                        if let Some(input) = app.domain.inputs.get(i - 1) {
+                            return Some(Action::RemoveInput(input.name.clone()));
+                        }
+                    }
+                }
+                None
+            }
             KeyCode::Char('m') => Some(Action::SwitchMode),
             KeyCode::Char('i') if app.ui.selected_index == 2 => Some(Action::TogglePackageDetails),
             KeyCode::Char('j') if app.ui.selected_index == 2 => Some(Action::MovePackageSelectionDown),
             KeyCode::Char('k') if app.ui.selected_index == 2 => Some(Action::MovePackageSelectionUp),
+            KeyCode::Char('j') if app.ui.selected_index == 3 => Some(Action::MoveInputSelectionDown),
+            KeyCode::Char('k') if app.ui.selected_index == 3 => Some(Action::MoveInputSelectionUp),
             KeyCode::Char('J') => Some(Action::MoveDown),
             KeyCode::Char('K') => Some(Action::MoveUp),
             KeyCode::Down => Some(Action::MoveDown),

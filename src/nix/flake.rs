@@ -1177,7 +1177,7 @@ fn remove_from_list(list_node: &SyntaxNode, pkg_name: &str, content: &str) -> St
     result
 }
 
-fn remove_input(content: &str, input_name: &str) -> Result<String> {
+pub fn remove_input(content: &str, input_name: &str) -> Result<String> {
     let mut new_content = content.to_string();
 
     let ast = Root::parse(content);

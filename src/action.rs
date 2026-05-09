@@ -62,10 +62,13 @@ pub enum Action {
     UpdateShellPackages(Vec<String>),
     RemovePackage(usize),
     RemoveFlakePackage(String),
+    RemoveInput(String),
 
     // Version Selection
     SelectVersion(VersionInfo),
     SelectInputForPackage(String),
     MoveVersionSelectionDown,
     MoveVersionSelectionUp,
+    MoveInputSelectionDown,
+    MoveInputSelectionUp,
 }

@@ -1,7 +1,7 @@
-use crate::nix::Input;
+use crate::app::App;
 use ratatui::{prelude::*, widgets::*};
 
-pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect) {
+pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let mut rows = Vec::new();
 
     rows.push(Row::new(vec![
@@ -10,7 +10,7 @@ pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect) {
         Cell::from("─".repeat(100)),
     ]));
 
-    for input in inputs {
+    for input in &app.domain.inputs {
         rows.push(Row::new(vec![
             Cell::from(format!(" {}", input.name)),
             Cell::from("│"),
@@ -33,7 +33,8 @@ pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect) {
             ])
             .style(Style::default().add_modifier(Modifier::BOLD)),
         )
-        .column_spacing(0);
+        .column_spacing(0)
+        .row_highlight_style(Style::default().bg(Color::Cyan).fg(Color::Black));
 
-    frame.render_widget(table, area);
+    frame.render_stateful_widget(table, area, &mut app.ui.input_table_state);
 }

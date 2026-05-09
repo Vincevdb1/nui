@@ -31,9 +31,9 @@ pub struct UiState {
     pub selected_package_name: Option<String>,
     pub selected_version: Option<VersionInfo>,
     pub package_table_state: ratatui::widgets::TableState,
-}
-
-impl Default for UiState {
+    pub input_table_state: ratatui::widgets::TableState,
+    }
+    impl Default for UiState {
     fn default() -> Self {
         Self {
             selected_index: 2,
@@ -63,6 +63,8 @@ impl Default for UiState {
             selected_package_name: None,
             selected_version: None,
             package_table_state: ratatui::widgets::TableState::default(),
+            input_table_state: ratatui::widgets::TableState::default(),
         }
     }
-}
+    }
+

@@ -193,6 +193,9 @@ impl AppState {
                         self.update(Action::RefreshContext);
                     }
                 }
+                3 => {
+                    self.update(Action::MoveInputSelectionDown);
+                }
                 4 => {
                     if !self.domain.outputs.is_empty() {
                         self.ui.selected_output_index =
@@ -245,6 +248,9 @@ impl AppState {
                         };
                         self.update(Action::RefreshContext);
                     }
+                }
+                3 => {
+                    self.update(Action::MoveInputSelectionUp);
                 }
                 4 => {
                     if !self.domain.outputs.is_empty() {
@@ -304,6 +310,61 @@ impl AppState {
                         None => 1,
                     };
                     self.ui.package_table_state.select(Some(i));
+                }
+            }
+            Action::MoveInputSelectionDown => {
+                let count = self.domain.inputs.len();
+                if count > 0 {
+                    let i = match self.ui.input_table_state.selected() {
+                        Some(i) => {
+                            if i >= count {
+                                1
+                            } else {
+                                i + 1
+                            }
+                        }
+                        None => 1,
+                    };
+                    self.ui.input_table_state.select(Some(i));
+                }
+            }
+            Action::MoveInputSelectionUp => {
+                let count = self.domain.inputs.len();
+                if count > 0 {
+                    let i = match self.ui.input_table_state.selected() {
+                        Some(i) => {
+                            if i <= 1 {
+                                count
+                            } else {
+                                i - 1
+                            }
+                        }
+                        None => 1,
+                    };
+                    self.ui.input_table_state.select(Some(i));
+                }
+            }
+            Action::RemoveInput(input_name) => {
+                if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
+                    let flake_path = file.path.clone();
+                    let tx = self.tx.clone();
+                    let input_name = input_name.clone();
+                    std::thread::spawn(move || {
+                        let content = std::fs::read_to_string(&flake_path).unwrap_or_default();
+                        match crate::nix::flake::remove_input(&content, &input_name) {
+                            Ok(new_content) => {
+                                if let Err(e) = std::fs::write(&flake_path, new_content) {
+                                    crate::log_output("Error", format!("Failed to write flake.nix: {}", e));
+                                } else {
+                                    crate::log_output("Success", format!("Removed input: {}", input_name));
+                                }
+                            }
+                            Err(e) => {
+                                crate::log_output("Error", format!("Failed to remove input: {}", e));
+                            }
+                        }
+                        let _ = tx.send(Action::RefreshContext);
+                    });
                 }
             }
             Action::RemoveFlakePackage(pkg_name) => {
