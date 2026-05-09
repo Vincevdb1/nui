@@ -44,7 +44,7 @@ pub enum Action {
     Log(LogEntry),
     SetSuggestions(Result<Vec<(String, String)>, String>),
     SetPackageSearchResults(Result<Vec<SearchResult>, String>),
-    SetPackageDetails(Result<HashMap<String, (String, String, bool, String)>, String>),
+    SetPackageDetails(usize, Result<HashMap<String, (String, String, bool, String)>, String>),
     SetVersions(Result<Vec<VersionInfo>, String>),
     UpdatePackageVersion(String, String),
     SetLockedVersion(String, String, String), // attribute, channel, version

@@ -803,7 +803,10 @@ impl AppState {
                     }
                 }
             }
-            Action::SetPackageDetails(res) => {
+            Action::SetPackageDetails(fetch_id, res) => {
+                if fetch_id != self.ui.package_fetch_id {
+                    return;
+                }
                 self.ui.fetching_package_details = false;
                 self.domain.pending_fetches.clear();
                 match res {
@@ -1043,12 +1046,14 @@ impl AppState {
             self.ui.package_fetch_error = None;
             self.domain.package_info.clear();
             self.domain.pending_fetches.clear();
+            self.ui.package_fetch_id += 1;
+            let fetch_id = self.ui.package_fetch_id;
 
             let tx = self.tx.clone();
             std::thread::spawn(move || {
                 let res =
                     crate::nix::Package::fetch_from_output(&flake_path, &output_type, &output_name);
-                let _ = tx.send(Action::SetPackageDetails(res));
+                let _ = tx.send(Action::SetPackageDetails(fetch_id, res));
             });
         }
     }

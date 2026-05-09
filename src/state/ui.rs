@@ -32,7 +32,9 @@ pub struct UiState {
     pub selected_version: Option<VersionInfo>,
     pub package_table_state: ratatui::widgets::TableState,
     pub input_table_state: ratatui::widgets::TableState,
+    pub package_fetch_id: usize,
     }
+
     impl Default for UiState {
     fn default() -> Self {
         Self {
@@ -64,7 +66,9 @@ pub struct UiState {
             selected_version: None,
             package_table_state: ratatui::widgets::TableState::default(),
             input_table_state: ratatui::widgets::TableState::default(),
+            package_fetch_id: 0,
         }
     }
     }
+
 
