@@ -3,10 +3,10 @@ use crate::nix::Input;
 use crate::state::Mode;
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect, Margin},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
 use std::collections::HashMap;
@@ -273,6 +273,23 @@ fn render_package_search(
                 .highlight_symbol(">> ");
 
             frame.render_stateful_widget(list, list_chunks[1], list_state);
+
+            // Render scrollbar
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(Some("▲"))
+                .end_symbol(Some("▼"));
+
+            let mut scrollbar_state = ScrollbarState::new(results.len())
+                .position(list_state.selected().unwrap_or(0));
+
+            frame.render_stateful_widget(
+                scrollbar,
+                list_chunks[1].inner(Margin {
+                    vertical: 1,
+                    horizontal: 0,
+                }),
+                &mut scrollbar_state,
+            );
         } else {
             let mut max_version_widths = Vec::new();
             for channel in channels {
@@ -418,6 +435,23 @@ fn render_package_search(
                 .highlight_symbol(">> ");
 
             frame.render_stateful_widget(list, list_chunks[1], list_state);
+
+            // Render scrollbar
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(Some("▲"))
+                .end_symbol(Some("▼"));
+
+            let mut scrollbar_state = ScrollbarState::new(results.len())
+                .position(list_state.selected().unwrap_or(0));
+
+            frame.render_stateful_widget(
+                scrollbar,
+                list_chunks[1].inner(Margin {
+                    vertical: 1,
+                    horizontal: 0,
+                }),
+                &mut scrollbar_state,
+            );
         }
     }
 }
@@ -570,6 +604,7 @@ fn render_version_selection(
 
         frame.render_widget(header, list_chunks[0]);
 
+        let list_len = items.len();
         let list = List::new(items)
             .block(Block::default().title(list_title).borders(Borders::ALL))
             .highlight_style(
@@ -581,6 +616,23 @@ fn render_version_selection(
             .highlight_symbol(">> ");
 
         frame.render_stateful_widget(list, list_chunks[1], list_state);
+
+        // Render scrollbar
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("▲"))
+            .end_symbol(Some("▼"));
+
+        let mut scrollbar_state = ScrollbarState::new(list_len)
+            .position(list_state.selected().unwrap_or(0));
+
+        frame.render_stateful_widget(
+            scrollbar,
+            list_chunks[1].inner(Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            &mut scrollbar_state,
+        );
     }
 }
 

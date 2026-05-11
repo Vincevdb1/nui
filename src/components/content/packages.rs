@@ -108,6 +108,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         ]));
     }
 
+    let rows_count = rows.len();
     let widths = [
         Constraint::Percentage(20),
         Constraint::Length(1),
@@ -131,4 +132,21 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .row_highlight_style(Style::default().bg(Color::Cyan).fg(Color::Black));
 
     frame.render_stateful_widget(table, area, &mut app.ui.package_table_state);
+
+    // Render scrollbar
+    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(Some("▲"))
+        .end_symbol(Some("▼"));
+
+    let mut scrollbar_state = ScrollbarState::new(rows_count)
+        .position(app.ui.package_table_state.selected().unwrap_or(0));
+
+    frame.render_stateful_widget(
+        scrollbar,
+        area.inner(Margin {
+            vertical: 1,
+            horizontal: 0,
+        }),
+        &mut scrollbar_state,
+    );
 }
