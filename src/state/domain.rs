@@ -261,6 +261,8 @@ pub struct VersionInfo {
     pub hash: String,
     pub date: String,
     pub is_unfree: bool,
+    #[serde(default)]
+    pub is_system: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -302,6 +304,7 @@ pub fn fetch_package_versions(pkg: &str) -> Result<Vec<VersionInfo>, String> {
                     .unwrap_or("")
                     .to_string(),
                 is_unfree,
+                is_system: false,
             }
         })
         .collect())
@@ -364,5 +367,7 @@ pub struct DomainData {
     pub package_updates: HashMap<String, String>,
     pub nix_search_cli_version: Option<String>,
     pub nxv_version: Option<String>,
+    pub system_nixpkgs_version: Option<String>,
+    pub system_nixpkgs_hash: Option<String>,
 }
 

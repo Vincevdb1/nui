@@ -61,7 +61,21 @@ fn main() -> Result<()> {
                     pkg
                 };
 
-                if pkg_base.starts_with("nixpkgs/") {
+                if pkg_base.starts_with("system/") {
+                    if let Some((_, suffix)) = pkg_base.split_once('/') {
+                        if let Some((_, pkg_name)) = suffix.split_once('#') {
+                            let path = std::process::Command::new("nix")
+                                .args(["eval", "--raw", "--impure", "--expr", "(import <nixpkgs> {}).path"])
+                                .output()
+                                .ok()
+                                .and_then(|o| if o.status.success() {
+                                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                                } else { None })
+                                .unwrap_or_else(|| ".".to_string());
+                            args.push(format!("path:{}#{}", path, pkg_name));
+                        }
+                    }
+                } else if pkg_base.starts_with("nixpkgs/") {
                     args.push(format!("github:NixOS/nixpkgs/{}", &pkg_base[8..]));
                 } else if pkg_base.contains('#') {
                     args.push(crate::nix::flake::normalize_flake_ref(pkg_base));
@@ -81,6 +95,12 @@ fn main() -> Result<()> {
                                 display_pkg = format!("{}{}{}", &display_pkg[..hash_idx + 8], &hash[..7], &display_pkg[hash_idx + 8 + hash_end..]);
                             }
                         }
+                    } else if let Some(hash_idx) = display_pkg.find("system/") {
+                        if let Some(hash_end) = display_pkg[hash_idx + 7..].find('#') {
+                            let hash = &display_pkg[hash_idx + 7..hash_idx + 7 + hash_end];
+                            let short_hash = if hash.len() > 7 { &hash[..7] } else { hash };
+                            display_pkg = format!("{}#{}", short_hash, &display_pkg[hash_idx + 7 + hash_end + 1..]);
+                        }
                     }
                     display_pkg
                 }).collect();
@@ -89,12 +109,16 @@ fn main() -> Result<()> {
 
             args.push("--impure".to_string());
 
-            std::process::Command::new("nix")
-                .args(args)
+            let mut cmd = std::process::Command::new("nix");
+            cmd.args(args)
                 .env("name", env_name)
-                .env("NIXPKGS_ALLOW_UNFREE", "1")
-                .spawn()?
-                .wait()?;
+                .env("NIXPKGS_ALLOW_UNFREE", "1");
+            
+            if let Ok(nix_path) = std::env::var("NIX_PATH") {
+                cmd.env("NIX_PATH", nix_path);
+            }
+
+            cmd.spawn()?.wait()?;
         }
     }
 

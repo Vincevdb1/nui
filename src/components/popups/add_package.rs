@@ -29,6 +29,8 @@ pub fn render(
     inputs: &[Input],
     selected_package_name: Option<&String>,
     mode: Mode,
+    system_nixpkgs_version: Option<&String>,
+    system_nixpkgs_hash: Option<&String>,
 ) {
     let area = centered_rect(80, 70, frame.area());
     frame.render_widget(Clear, area);
@@ -89,6 +91,8 @@ pub fn render(
             list_state,
             installed_packages,
             is_shell_mode,
+            system_nixpkgs_version,
+            system_nixpkgs_hash,
         );
     }
 
@@ -111,11 +115,13 @@ fn render_package_search(
     list_state: &mut ListState,
     installed_packages: &HashMap<String, (String, String, bool, String)>,
     is_shell_mode: bool,
+    _system_nixpkgs_version: Option<&String>,
+    system_nixpkgs_hash: Option<&String>,
 ) {
     let list_title = if is_searching {
-        " Searching... "
+        " Searching... ".to_string()
     } else {
-        " Search Results (Enter to select) "
+        " Search Results (Enter to select) ".to_string()
     };
 
     if results.is_empty() {
@@ -158,7 +164,12 @@ fn render_package_search(
             let max_version_width = results
                 .iter()
                 .map(|res| {
-                    res.versions.first().map(|v| v.version.len()).unwrap_or(0)
+                    let mut len = res.versions.first().map(|v| v.version.len()).unwrap_or(0);
+                    let sys_hash = system_nixpkgs_hash.map(|s| s.as_str());
+                    if res.hash.as_deref().unwrap_or("") != sys_hash.unwrap_or("") {
+                        len += 2; // " 󰚰"
+                    }
+                    len
                 })
                 .max()
                 .unwrap_or(0)
@@ -207,18 +218,23 @@ fn render_package_search(
                     ];
 
                     spans.push(Span::raw(" | "));
-                    let version = res.versions.first().map(|v| v.version.as_str()).unwrap_or("Unknown");
+                    let mut version = res.versions.first().map(|v| v.version.as_str()).unwrap_or("Unknown").to_string();
+                    let sys_hash = system_nixpkgs_hash.map(|s| s.as_str());
+                    let has_update = res.hash.as_deref().unwrap_or("") != sys_hash.unwrap_or("");
+                    if has_update {
+                        version.push_str(" 󰚰");
+                    }
                     spans.push(Span::styled(
                         format!("{:width$}", version, width = max_version_width),
                         Style::default().fg(Color::Green),
                     ));
 
                     spans.push(Span::raw(" | "));
-                    let hash = res.hash.as_deref().unwrap_or("-------");
+                    let hash = sys_hash.unwrap_or(res.hash.as_deref().unwrap_or("-------"));
                     let short_hash = if hash.len() > 7 { &hash[..7] } else { hash };
                     spans.push(Span::styled(
                         format!("{:8}", short_hash),
-                        Style::default().fg(Color::Cyan),
+                        if sys_hash.is_some() { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::Cyan) },
                     ));
 
                     spans.push(Span::raw(" | "));
@@ -425,8 +441,6 @@ fn render_version_selection(
 
     let mut all_items = Vec::new();
 
-    // ... (rest of all_items population remains same)
-
     // 1. Add Available Inputs
     if mode == Mode::Flake {
         for input in inputs {
@@ -440,7 +454,8 @@ fn render_version_selection(
                     version.clone(),
                     short_rev.to_string(),
                     false, // Inputs don't have unfree marker here for simplicity, or we could fetch it
-                    Some((input.name.clone(), channel_name))
+                    Some((input.name.clone(), channel_name)),
+                    false, // is_system
                 ));
             }
         }
@@ -453,11 +468,12 @@ fn render_version_selection(
             v.version.clone(),
             hash.to_string(),
             v.is_unfree,
-            None
+            None,
+            v.is_system, // is_system
         ));
     }
 
-    // 3. Sort by version (descending)
+    // 4. Sort by version (descending)
     all_items.sort_by(|a, b| b.0.cmp(&a.0));
 
     if all_items.is_empty() && !is_fetching {
@@ -518,22 +534,24 @@ fn render_version_selection(
 
         let items: Vec<ListItem> = all_items
             .into_iter()
-            .map(|(version, hash, is_unfree, input_info)| {
+            .map(|(version, hash, is_unfree, input_info, is_system)| {
                 let unfree_marker = if is_unfree {
                     Span::styled("$ ", Style::default().fg(Color::Green))
                 } else {
                     Span::raw("  ")
                 };
 
-                let (display_name, style) = if let Some((name, channel)) = input_info {
+                let mut display_name = version.clone();
+                let mut style = Style::default().add_modifier(Modifier::BOLD);
+
+                if let Some((name, channel)) = input_info {
                     let color = get_channel_color(&channel);
-                    (
-                        format!("{} ({})", version, name),
-                        Style::default().fg(color).add_modifier(Modifier::BOLD)
-                    )
-                } else {
-                    (version, Style::default().add_modifier(Modifier::BOLD))
-                };
+                    display_name = format!("{} ({})", version, name);
+                    style = style.fg(color);
+                } else if is_system {
+                    display_name = format!("{} [System]", version);
+                    style = style.fg(Color::Yellow);
+                }
 
                 let spans = vec![
                     unfree_marker,

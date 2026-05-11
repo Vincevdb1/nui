@@ -73,6 +73,25 @@ impl AppState {
                 outputs,
                 nix_search_cli_version: domain::get_tool_version("nix-search"),
                 nxv_version: domain::get_tool_version("nxv"),
+                system_nixpkgs_version: std::process::Command::new("nix-instantiate")
+                    .args(["--eval", "-E", "(import <nixpkgs> {}).lib.version", "--json"])
+                    .output()
+                    .ok()
+                    .and_then(|o| if o.status.success() {
+                        serde_json::from_slice::<String>(&o.stdout).ok()
+                    } else {
+                        None
+                    }),
+                system_nixpkgs_hash: std::process::Command::new("nix")
+                    .args(["eval", "--raw", "--impure", "--expr", "builtins.substring 0 32 (builtins.baseNameOf (toString <nixpkgs>))"])
+                    .output()
+                    .ok()
+                    .and_then(|o| if o.status.success() {
+                        let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        if s.is_empty() { None } else { Some(s) }
+                    } else {
+                        None
+                    }),
                 ..Default::default()
             },
             should_quit: false,
@@ -444,7 +463,9 @@ impl AppState {
                         let package_name = result.name.clone();
                         if self.mode == Mode::Shell {
                             let version = result.versions.first().map(|v| v.version.clone()).unwrap_or_else(|| "Unknown".to_string());
-                            let pkg_to_add = if let Some(hash) = &result.hash {
+                            let pkg_to_add = if let Some(hash) = self.domain.system_nixpkgs_hash.as_ref() {
+                                format!("system/{}#{}@{}", hash, package_name, version)
+                            } else if let Some(hash) = result.hash.as_ref() {
                                 format!("nixpkgs/{}#{}@{}", hash, package_name, version)
                             } else {
                                 format!("{}@{}", package_name, version)
@@ -929,7 +950,36 @@ impl AppState {
             Action::SetVersions(res) => {
                 self.ui.is_fetching_versions = false;
                 match res {
-                    Ok(versions) => {
+                    Ok(mut versions) => {
+                        if self.mode == Mode::Shell {
+                            if let Some(sys_hash) = &self.domain.system_nixpkgs_hash {
+                                let mut pkg_version = "Unknown".to_string();
+                                let mut is_unfree = false;
+                                if let Some(pkg_name) = &self.ui.selected_package_name {
+                                    if let Some(res) = self.domain.package_search_results.iter().find(|r| &r.name == pkg_name) {
+                                        is_unfree = res.is_unfree;
+                                        if let Some(v) = res.versions.first() {
+                                            pkg_version = v.version.clone();
+                                        }
+                                    }
+                                }
+
+                                if !versions.iter().any(|v| v.hash == *sys_hash) {
+                                    versions.push(domain::VersionInfo {
+                                        version: pkg_version,
+                                        hash: sys_hash.clone(),
+                                        date: "".to_string(),
+                                        is_unfree,
+                                        is_system: true,
+                                    });
+                                } else {
+                                    if let Some(v) = versions.iter_mut().find(|v| v.hash == *sys_hash) {
+                                        v.is_system = true;
+                                    }
+                                }
+                            }
+                        }
+
                         self.domain.package_versions = versions;
                         if !self.domain.package_versions.is_empty() {
                             self.ui.version_list_state.select(Some(0));
@@ -944,7 +994,11 @@ impl AppState {
             Action::SelectVersion(version_info) => {
                 if self.mode == Mode::Shell {
                     if let Some(pkg_name) = self.ui.selected_package_name.clone() {
-                        let pinned_pkg = format!("nixpkgs/{}#{}@{}", version_info.hash, pkg_name, version_info.version);
+                        let pinned_pkg = if version_info.is_system {
+                            format!("system/{}#{}@{}", version_info.hash, pkg_name, version_info.version)
+                        } else {
+                            format!("nixpkgs/{}#{}@{}", version_info.hash, pkg_name, version_info.version)
+                        };
                         self.shell_packages.push(pinned_pkg);
                     }
                     self.ui.is_adding_package = false;

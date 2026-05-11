@@ -42,22 +42,22 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         if p.contains('@') {
             if let Some((rest, v)) = p.rsplit_once('@') {
                 version = v.to_string();
-                if rest.starts_with("nixpkgs/") && rest.contains('#') {
+                if (rest.starts_with("nixpkgs/") || rest.starts_with("system/")) && rest.contains('#') {
                     if let Some((prefix, suffix)) = rest.split_once('#') {
                         name = suffix.to_string();
                         if let Some((_, h)) = prefix.split_once('/') {
-                            hash = if h.len() > 7 { h[..7].to_string() } else { h.to_string() };
+                            hash = h.to_string();
                         }
                     }
                 } else {
                     name = rest.to_string();
                 }
             }
-        } else if p.starts_with("nixpkgs/") && p.contains('#') {
+        } else if (p.starts_with("nixpkgs/") || p.starts_with("system/")) && p.contains('#') {
             if let Some((prefix, suffix)) = p.split_once('#') {
                 name = suffix.to_string();
                 if let Some((_, h)) = prefix.split_once('/') {
-                    hash = if h.len() > 7 { h[..7].to_string() } else { h.to_string() };
+                    hash = h.to_string();
                 }
             }
         }

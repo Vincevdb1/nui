@@ -126,6 +126,8 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             &app.domain.inputs,
             app.ui.selected_package_name.as_ref(),
             app.mode.clone(),
+            app.domain.system_nixpkgs_version.as_ref(),
+            app.domain.system_nixpkgs_hash.as_ref(),
         );
     }
 
