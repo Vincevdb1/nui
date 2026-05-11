@@ -68,9 +68,16 @@ pub fn render(
     is_selected: bool,
     logs: &[LogEntry],
     state: &mut ListState,
+    progress: Option<&str>,
 ) {
+    let title = if let Some(p) = progress {
+        format!(" [5] Command Log (Updating NXV Index: {}) ", p)
+    } else {
+        " [5] Command Log ".to_string()
+    };
+
     let block = Block::default()
-        .title(" [5] Command Log ")
+        .title(title)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(if is_selected {

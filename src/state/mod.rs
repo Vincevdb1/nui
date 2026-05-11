@@ -106,6 +106,95 @@ impl AppState {
         if app.mode == Mode::Flake {
             app.fetch_package_details();
         }
+
+        if app.domain.nxv_version.is_some() {
+            crate::log_output("NXV", "Starting background update check...");
+            let tx = app.tx.clone();
+            std::thread::spawn(move || {
+                use std::io::{BufReader, Read};
+                use std::process::{Command, Stdio};
+
+                // Use 'script' to force a PTY so nxv outputs the progress bar
+                let mut child = match Command::new("script")
+                    .args(["-q", "-c", "nxv update", "/dev/null"])
+                    .stdout(Stdio::piped())
+                    .spawn()
+                {
+                    Ok(child) => child,
+                    Err(e) => {
+                        crate::log_output("NXV Error", format!("Failed to spawn nxv update: {}", e));
+                        return;
+                    }
+                };
+
+                let stdout = child.stdout.take().unwrap();
+                let mut reader = BufReader::new(stdout);
+                let mut buffer = Vec::new();
+                let mut b = [0u8; 1];
+
+                fn strip_ansi(s: &str) -> String {
+                    let mut result = String::new();
+                    let mut iter = s.chars();
+                    while let Some(c) = iter.next() {
+                        if c == '\x1b' {
+                            if let Some('[') = iter.next() {
+                                while let Some(c2) = iter.next() {
+                                    if (0x40..=0x7e).contains(&(c2 as u8)) {
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            result.push(c);
+                        }
+                    }
+                    result
+                }
+
+                while reader.read_exact(&mut b).is_ok() {
+                    if b[0] == b'\n' || b[0] == b'\r' {
+                        let line = String::from_utf8_lossy(&buffer);
+                        let clean_line = strip_ansi(&line);
+                        let trimmed = clean_line.trim();
+                        if !trimmed.is_empty() {
+                            // Extract the bar if present, otherwise use the whole message
+                            let display = if let Some(start) = trimmed.find('[') {
+                                if let Some(end) = trimmed.find(']') {
+                                    let stats = trimmed[end + 1..].trim();
+                                    let bar_content = &trimmed[start + 1..end];
+                                    let filled_count = bar_content.chars().filter(|&c| !c.is_whitespace() && c != '-').count();
+                                    let total_chars = bar_content.chars().count();
+                                    let ratio = if total_chars > 0 { filled_count as f32 / total_chars as f32 } else { 0.0 };
+                                    let filled_segments = (ratio * 10.0).round() as usize;
+                                    let bar = format!("[{}{}]", "█".repeat(filled_segments), " ".repeat(10 - filled_segments));
+                                    format!("{} {}", bar, stats)
+                                } else {
+                                    trimmed[start..].to_string()
+                                }
+                            } else {
+                                trimmed.to_string()
+                            };
+                            let _ = tx.send(Action::UpdateNxvProgress(Some(display)));
+                        }
+                        buffer.clear();
+                    } else {
+                        buffer.push(b[0]);
+                    }
+                }
+
+                let status = child.wait();
+                let _ = tx.send(Action::UpdateNxvProgress(None));
+                
+                if let Ok(status) = status {
+                    if status.success() {
+                        let _ = tx.send(Action::Log(crate::components::command_log::LogEntry::Info("NXV index updated successfully".to_string())));
+                    } else {
+                        let _ = tx.send(Action::Log(crate::components::command_log::LogEntry::Info(format!("NXV update failed with status: {}", status))));
+                    }
+                }
+            });
+        }
+
         app
     }
 
@@ -1059,6 +1148,9 @@ impl AppState {
                 self.ui.is_adding_package = false;
                 self.ui.is_selecting_version = false;
                 self.ui.selected_package_name = None;
+            }
+            Action::UpdateNxvProgress(progress) => {
+                self.domain.nxv_update_progress = progress;
             }
         }
     }

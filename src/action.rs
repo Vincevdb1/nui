@@ -71,4 +71,7 @@ pub enum Action {
     MoveVersionSelectionUp,
     MoveInputSelectionDown,
     MoveInputSelectionUp,
+
+    // NXV Update
+    UpdateNxvProgress(Option<String>),
 }

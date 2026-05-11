@@ -69,6 +69,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                 app.ui.selected_index == 5,
                 &app.domain.logs,
                 &mut app.ui.command_log_state,
+                app.domain.nxv_update_progress.as_deref(),
             );
         } else {
             command_log::render(
@@ -77,6 +78,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                 app.ui.selected_index == 5,
                 &app.domain.logs,
                 &mut app.ui.command_log_state,
+                app.domain.nxv_update_progress.as_deref(),
             );
         }
     }
