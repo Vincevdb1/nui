@@ -101,7 +101,14 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
         Vec::new()
     };
 
-    if let Some(obj) = json.as_object() {
+    let is_v2 = json.get("version").and_then(|v| v.as_u64()) == Some(2);
+    let target_obj = if is_v2 {
+        json.get("inventory").and_then(|i| i.as_object())
+    } else {
+        json.as_object()
+    };
+
+    if let Some(obj) = target_obj {
         for (config_type, val) in obj {
             if !matches!(
                 config_type.as_str(),
@@ -113,49 +120,65 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
                 continue;
             }
 
-            if let Some(inner_obj) = val.as_object() {
-                for (path, inner_val) in inner_obj {
-                    // For devShells, packages, legacyPackages, it's <type>.<system>.<name>
-                    if matches!(config_type.as_str(), "devShells" | "packages" | "legacyPackages") {
-                        if let Some(systems_obj) = inner_val.as_object() {
-                            for (name, _) in systems_obj {
-                                let full_path = format!("{}.{}", path, name);
-                                let mut config = Output {
-                                    path: full_path.clone(),
-                                    name: None,
-                                    config_type: config_type.clone(),
-                                    content: None,
-                                };
+            let inner_obj_val = if is_v2 {
+                val.get("output").and_then(|o| o.get("children"))
+            } else {
+                Some(val)
+            };
 
-                                // Try to find match in AST configs
-                                if let Some(ast_match) = ast_configs.iter().find(|c| {
-                                    c.config_type == *config_type && c.path == full_path
-                                }) {
-                                    config.name = ast_match.name.clone();
-                                    config.content = ast_match.content.clone();
+            if let Some(inner_obj_val) = inner_obj_val {
+                if let Some(inner_obj) = inner_obj_val.as_object() {
+                    for (path, inner_val) in inner_obj {
+                        // For devShells, packages, legacyPackages, it's <type>.<system>.<name>
+                        if matches!(config_type.as_str(), "devShells" | "packages" | "legacyPackages") {
+                            let systems_obj_val = if is_v2 {
+                                inner_val.get("children")
+                            } else {
+                                Some(inner_val)
+                            };
+
+                            if let Some(systems_obj_val) = systems_obj_val {
+                                if let Some(systems_obj) = systems_obj_val.as_object() {
+                                    for (name, _) in systems_obj {
+                                        let full_path = format!("{}.{}", path, name);
+                                        let mut config = Output {
+                                            path: full_path.clone(),
+                                            name: None,
+                                            config_type: config_type.clone(),
+                                            content: None,
+                                        };
+
+                                        // Try to find match in AST configs
+                                        if let Some(ast_match) = ast_configs.iter().find(|c| {
+                                            c.config_type == *config_type && c.path == full_path
+                                        }) {
+                                            config.name = ast_match.name.clone();
+                                            config.content = ast_match.content.clone();
+                                        }
+
+                                        configs.push(config);
+                                    }
                                 }
-
-                                configs.push(config);
                             }
-                        }
-                    } else {
-                        let mut config = Output {
-                            path: path.clone(),
-                            name: None,
-                            config_type: config_type.clone(),
-                            content: None,
-                        };
+                        } else {
+                            let mut config = Output {
+                                path: path.clone(),
+                                name: None,
+                                config_type: config_type.clone(),
+                                content: None,
+                            };
 
-                        // Try to find match in AST configs
-                        if let Some(ast_match) = ast_configs
-                            .iter()
-                            .find(|c| c.config_type == *config_type && c.path == *path)
-                        {
-                            config.name = ast_match.name.clone();
-                            config.content = ast_match.content.clone();
-                        }
+                            // Try to find match in AST configs
+                            if let Some(ast_match) = ast_configs
+                                .iter()
+                                .find(|c| c.config_type == *config_type && c.path == *path)
+                            {
+                                config.name = ast_match.name.clone();
+                                config.content = ast_match.content.clone();
+                            }
 
-                        configs.push(config);
+                            configs.push(config);
+                        }
                     }
                 }
             }
