@@ -511,6 +511,50 @@ impl AppState {
                     }
                 }
             }
+            Action::RemoveFlakePackages(pkg_names) => {
+                if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
+                    let flake_path = file.path.clone();
+                    if let Some(output) = self
+                        .domain
+                        .outputs
+                        .get(self.ui.selected_output_index)
+                    {
+                        let parts: Vec<&str> = output.path.split('.').collect();
+                        let system = parts.get(0).copied().unwrap_or("x86_64-linux").to_string();
+                        let shell_name = parts.get(1).copied().unwrap_or("default").to_string();
+
+                        let tx = self.tx.clone();
+                        let pkg_names = pkg_names.clone();
+                        std::thread::spawn(move || {
+                            if let Err(e) = crate::nix::flake::remove_packages(
+                                &flake_path,
+                                &system,
+                                &shell_name,
+                                &pkg_names,
+                            ) {
+                                crate::log_output(
+                                    "Error",
+                                    format!("Failed to remove packages: {}", e),
+                                );
+                            } else {
+                                crate::log_output(
+                                    "Success",
+                                    format!("Removed {} packages from {}", pkg_names.len(), shell_name),
+                                );
+                            }
+                            let _ = tx.send(Action::RefreshContext);
+                        });
+                        self.ui.selected_packages.clear();
+                    }
+                }
+            }
+            Action::TogglePackageSelection(pkg_name) => {
+                if self.ui.selected_packages.contains(&pkg_name) {
+                    self.ui.selected_packages.remove(&pkg_name);
+                } else {
+                    self.ui.selected_packages.insert(pkg_name);
+                }
+            }
             Action::OpenAddPackage => {
                 self.ui.is_adding_package = true;
                 self.ui.is_selecting_version = false;
@@ -1020,6 +1064,30 @@ impl AppState {
                         };
                         self.ui.shell_package_list_state.select(Some(new_index));
                     }
+                }
+            }
+            Action::RemovePackages(indices) => {
+                if self.mode == Mode::Shell {
+                    let mut sorted_indices = indices.clone();
+                    sorted_indices.sort_by(|a, b| b.cmp(a));
+                    for index in sorted_indices {
+                        if index < self.shell_packages.len() {
+                            self.shell_packages.remove(index);
+                        }
+                    }
+                    if self.shell_packages.is_empty() {
+                        self.ui.shell_package_list_state.select(None);
+                    } else {
+                        self.ui.shell_package_list_state.select(Some(1));
+                    }
+                    self.ui.selected_shell_packages.clear();
+                }
+            }
+            Action::ToggleShellPackageSelection(pkg_name) => {
+                if self.ui.selected_shell_packages.contains(&pkg_name) {
+                    self.ui.selected_shell_packages.remove(&pkg_name);
+                } else {
+                    self.ui.selected_shell_packages.insert(pkg_name);
                 }
             }
             Action::FetchVersions(pkg) => {

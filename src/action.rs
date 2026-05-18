@@ -60,8 +60,13 @@ pub enum Action {
     // Shell Mode Actions
     StartShell(Vec<String>),
     UpdateShellPackages(Vec<String>),
+    // Package selection
+    TogglePackageSelection(String),
+    ToggleShellPackageSelection(String),
     RemovePackage(usize),
+    RemovePackages(Vec<usize>),
     RemoveFlakePackage(String),
+    RemoveFlakePackages(Vec<String>),
     RemoveInput(String),
 
     // Version Selection

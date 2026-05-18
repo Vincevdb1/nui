@@ -1071,44 +1071,53 @@ fn insert_packages_into_set(set_node: &SyntaxNode, pkg_name: &str, content: &str
     content.to_string()
 }
 
-pub fn remove_package(flake_path: &Path, system: &str, shell_name: &str, pkg_name: &str) -> Result<()> {
+pub fn remove_packages(
+    flake_path: &Path,
+    system: &str,
+    shell_name: &str,
+    pkg_names: &[String],
+) -> Result<()> {
     let content = std::fs::read_to_string(flake_path)?;
+    let mut current_content = content.clone();
 
-    let mut new_content = remove_package_from_content(&content, system, shell_name, pkg_name)?;
+    for pkg_name in pkg_names {
+        current_content = remove_package_from_content(&current_content, system, shell_name, pkg_name)?;
 
-    if new_content == content {
-        return Ok(());
-    }
-
-    if let Some((input_name, _)) = pkg_name.split_once('.') {
-        let inputs = extract_inputs(&new_content, None);
-        if inputs.iter().any(|i| i.name == input_name) {
-            let configs = extract_outputs(&new_content);
-            let mut used = false;
-            for config in &configs {
-                if let Some(config_content) = &config.content {
-                    let attrs = extract_package_attribute_strings(config_content);
-                    if attrs
-                        .iter()
-                        .any(|a| a.starts_with(&format!("{}.", input_name)) || a == input_name)
-                    {
-                        used = true;
-                        break;
+        // Handle input removal if it's no longer used
+        if let Some((input_name, _)) = pkg_name.split_once('.') {
+            let inputs = extract_inputs(&current_content, None);
+            if inputs.iter().any(|i| i.name == input_name) {
+                let configs = extract_outputs(&current_content);
+                let mut used = false;
+                for config in &configs {
+                    if let Some(config_content) = &config.content {
+                        let attrs = extract_package_attribute_strings(config_content);
+                        if attrs
+                            .iter()
+                            .any(|a| a.starts_with(&format!("{}.", input_name)) || a == input_name)
+                        {
+                            used = true;
+                            break;
+                        }
                     }
                 }
-            }
 
-            if !used {
-                new_content = remove_input(&new_content, input_name)?;
+                if !used {
+                    current_content = remove_input(&current_content, input_name)?;
+                }
             }
         }
     }
 
-    if new_content != content {
-        std::fs::write(flake_path, new_content)?;
+    if current_content != content {
+        std::fs::write(flake_path, current_content)?;
     }
 
     Ok(())
+}
+
+pub fn remove_package(flake_path: &Path, system: &str, shell_name: &str, pkg_name: &str) -> Result<()> {
+    remove_packages(flake_path, system, shell_name, &[pkg_name.to_string()])
 }
 
 fn remove_package_from_content(

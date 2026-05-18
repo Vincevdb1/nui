@@ -33,6 +33,8 @@ pub struct UiState {
     pub package_table_state: ratatui::widgets::TableState,
     pub input_table_state: ratatui::widgets::TableState,
     pub package_fetch_id: usize,
+    pub selected_packages: std::collections::HashSet<String>,
+    pub selected_shell_packages: std::collections::HashSet<String>,
     }
 
     impl Default for UiState {
@@ -67,6 +69,8 @@ pub struct UiState {
             package_table_state: ratatui::widgets::TableState::default(),
             input_table_state: ratatui::widgets::TableState::default(),
             package_fetch_id: 0,
+            selected_packages: std::collections::HashSet::new(),
+            selected_shell_packages: std::collections::HashSet::new(),
         }
     }
     }

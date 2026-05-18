@@ -84,11 +84,11 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     }
 
     let footer_text = if app.mode == crate::state::Mode::Shell {
-        "a: Add | d: Remove | s: Start Shell | m: Switch Mode | j/k: Select | q: Quit"
+        "a: Add | d: Remove | s: Start Shell | m: Switch Mode | j/k: Select | Space: Multi-select | q: Quit"
     } else {
         match app.ui.selected_index {
             1 => "Tab: Switch focus | m: Switch Mode | 1-5: Select tab | q: Quit",
-            2 => "a: Add | d: Remove | i: Info | m: Mode | Shift-j/k: Select | j/k: Navigate pkgs | Tab: Focus | q: Quit",
+            2 => "a: Add | d: Remove | i: Info | m: Mode | Shift-j/k: Select | j/k: Navigate pkgs | Space: Multi-select | Tab: Focus | q: Quit",
             3 => "a: Add Input | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
             4 => "j/k: Select Output | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
             5 => "j/k: Scroll Logs | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",

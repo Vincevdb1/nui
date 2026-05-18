@@ -60,6 +60,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let mut rows = Vec::new();
 
     rows.push(Row::new(vec![
+        Cell::from(""),
         Cell::from("─".repeat(100)),
         Cell::from("┼"),
         Cell::from("─".repeat(100)),
@@ -68,6 +69,19 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     ]));
 
     for pkg in all_packages {
+        let is_selected = app.ui.selected_packages.contains(&pkg.name);
+        let has_any_selected = !app.ui.selected_packages.is_empty();
+        
+        let select_marker = if has_any_selected {
+            if is_selected {
+                Span::styled(" ● ", Style::default().fg(Color::Yellow))
+            } else {
+                Span::raw(" ○ ")
+            }
+        } else {
+            Span::raw("")
+        };
+
         let unfree_marker = if pkg.is_unfree {
             Span::styled(" $", Style::default().fg(Color::Green))
         } else {
@@ -97,6 +111,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         };
 
         rows.push(Row::new(vec![
+            Cell::from(Line::from(vec![select_marker])),
             Cell::from(Line::from(vec![
                 Span::raw(format!(" {}", pkg.name)),
                 unfree_marker,
@@ -110,6 +125,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
 
     let rows_count = rows.len();
     let widths = [
+        Constraint::Length(3),
         Constraint::Percentage(20),
         Constraint::Length(1),
         Constraint::Percentage(25),
@@ -120,6 +136,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let table = Table::new(rows, widths)
         .header(
             Row::new(vec![
+                Cell::from(""),
                 Cell::from(" Name"),
                 Cell::from("│"),
                 Cell::from(" Version"),

@@ -27,6 +27,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let mut rows: Vec<Row> = Vec::new();
 
     rows.push(Row::new(vec![
+        Cell::from(""),
         Cell::from("─".repeat(100)),
         Cell::from("┼"),
         Cell::from("─".repeat(100)),
@@ -35,6 +36,19 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     ]));
 
     for p in &app.shell_packages {
+        let is_selected = app.ui.selected_shell_packages.contains(p);
+        let has_any_selected = !app.ui.selected_shell_packages.is_empty();
+        
+        let select_marker = if has_any_selected {
+            if is_selected {
+                Span::styled(" ● ", Style::default().fg(Color::Yellow))
+            } else {
+                Span::raw(" ○ ")
+            }
+        } else {
+            Span::raw("")
+        };
+
         let mut name = p.clone();
         let mut version = "Unknown".to_string();
         let mut hash = "-------".to_string();
@@ -63,6 +77,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         }
 
         rows.push(Row::new(vec![
+            Cell::from(Line::from(vec![select_marker])),
             Cell::from(format!(" {}", name)).style(Style::default().add_modifier(Modifier::BOLD)),
             Cell::from("│"),
             Cell::from(format!(" {}", version)).style(Style::default().fg(Color::Green)),
@@ -73,6 +88,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
 
     let rows_count = rows.len();
     let widths = [
+        Constraint::Length(3),
         Constraint::Percentage(40),
         Constraint::Length(1),
         Constraint::Percentage(30),
@@ -83,6 +99,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let table = Table::new(rows, widths)
         .header(
             Row::new(vec![
+                Cell::from(""),
                 Cell::from(" Name"),
                 Cell::from("│"),
                 Cell::from(" Version"),

@@ -273,7 +273,26 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
             KeyCode::Char('a') if app.ui.selected_index == 2 || (app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1) => Some(Action::OpenAddPackage),
             KeyCode::Char('a') if app.ui.selected_index == 3 => Some(Action::OpenAddInput),
             KeyCode::Char('s') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => Some(Action::StartShell(app.shell_packages.clone())),
+            KeyCode::Char(' ') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => {
+                if let Some(i) = app.ui.shell_package_list_state.selected() {
+                    if i > 0 {
+                        if let Some(pkg_name) = app.shell_packages.get(i - 1) {
+                            return Some(Action::ToggleShellPackageSelection(pkg_name.clone()));
+                        }
+                    }
+                }
+                None
+            }
             KeyCode::Char('d') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => {
+                if !app.ui.selected_shell_packages.is_empty() {
+                    let mut indices = Vec::new();
+                    for (i, pkg) in app.shell_packages.iter().enumerate() {
+                        if app.ui.selected_shell_packages.contains(pkg) {
+                            indices.push(i);
+                        }
+                    }
+                    return Some(Action::RemovePackages(indices));
+                }
                 if let Some(i) = app.ui.shell_package_list_state.selected() {
                     if i > 0 {
                         Some(Action::RemovePackage(i - 1))
@@ -284,7 +303,34 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
                     None
                 }
             }
+            KeyCode::Char(' ') if app.ui.selected_index == 2 => {
+                if let Some(i) = app.ui.package_table_state.selected() {
+                    if i > 0 {
+                        let mut pkgs: Vec<_> = app.domain.package_info.keys().collect();
+                        pkgs.sort();
+                        if let Some(pkg_name) = pkgs.get(i - 1) {
+                            return Some(Action::TogglePackageSelection(pkg_name.to_string()));
+                        }
+                    }
+                }
+                None
+            }
             KeyCode::Char('d') if app.ui.selected_index == 2 => {
+                if !app.ui.selected_packages.is_empty() {
+                    let mut pkgs_to_remove = Vec::new();
+                    for pkg_name in &app.ui.selected_packages {
+                        if let Some((_, _, _, source)) = app.domain.package_info.get(pkg_name) {
+                            let full_name = if source.is_empty() {
+                                pkg_name.to_string()
+                            } else {
+                                format!("{}.{}", source, pkg_name)
+                            };
+                            pkgs_to_remove.push(full_name);
+                        }
+                    }
+                    return Some(Action::RemoveFlakePackages(pkgs_to_remove));
+                }
+
                 if let Some(i) = app.ui.package_table_state.selected() {
                     if i > 0 {
                         let mut pkgs: Vec<_> = app.domain.package_info.keys().collect();
