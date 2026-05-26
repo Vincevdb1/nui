@@ -1,11 +1,24 @@
-use crate::app::App;
 use ratatui::{prelude::*, widgets::*};
 use throbber_widgets_tui::Throbber;
 
-pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
+use std::collections::{HashMap, HashSet};
+use ratatui::widgets::TableState;
+use throbber_widgets_tui::ThrobberState;
+
+pub struct PackagesProps<'a> {
+    pub package_info: &'a HashMap<String, (String, String, bool, String)>,
+    pub fetching_package_details: bool,
+    pub throbber_state: &'a mut ThrobberState,
+    pub selected_packages: &'a HashSet<String>,
+    pub pinned_packages: &'a HashSet<String>,
+    pub package_updates: &'a HashMap<String, String>,
+    pub package_table_state: &'a mut TableState,
+}
+
+pub fn render(props: &mut PackagesProps, frame: &mut Frame, area: Rect) {
     let mut all_packages = Vec::new();
 
-    for (name, (description, version, is_unfree, source_input)) in &app.domain.package_info {
+    for (name, (description, version, is_unfree, source_input)) in props.package_info {
         all_packages.push(crate::nix::Package {
             name: name.clone(),
             description: description.clone(),
@@ -18,7 +31,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     all_packages.sort_by(|a, b| a.name.cmp(&b.name));
 
     if all_packages.is_empty() {
-        if app.ui.fetching_package_details {
+        if props.fetching_package_details {
             let vertical_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -47,7 +60,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
             frame.render_stateful_widget(
                 throbber,
                 horizontal_chunks[1],
-                &mut app.ui.throbber_state,
+                props.throbber_state,
             );
         } else {
             let p = Paragraph::new("No packages found in selected configuration.")
@@ -69,8 +82,8 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     ]));
 
     for pkg in &all_packages {
-        let is_selected = app.ui.selected_packages.contains(&pkg.name);
-        let has_any_selected = !app.ui.selected_packages.is_empty();
+        let is_selected = props.selected_packages.contains(&pkg.name);
+        let has_any_selected = !props.selected_packages.is_empty();
         
         let select_marker = if has_any_selected {
             if is_selected {
@@ -88,17 +101,16 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
             Span::raw("")
         };
 
-        let pin_marker = if app.ui.pinned_packages.contains(&pkg.name) {
+        let pin_marker = if props.pinned_packages.contains(&pkg.name) {
             Span::styled(" 󰐃", Style::default().fg(Color::Cyan))
         } else {
             Span::raw("")
         };
 
         let current_version = pkg.version.clone().unwrap_or_default();
-        let latest = app.domain.package_updates.get(&pkg.name)
+        let latest = props.package_updates.get(&pkg.name)
             .or_else(|| {
-                // Fuzzy match: if we have an update for "jetbrains.datagrip" and we are "datagrip"
-                app.domain.package_updates.iter()
+                props.package_updates.iter()
                     .find(|(attr, _)| attr.ends_with(&format!(".{}", pkg.name)))
                     .map(|(_, v)| v)
             });
@@ -165,15 +177,14 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .column_spacing(0)
         .row_highlight_style(Style::default().bg(Color::Cyan).fg(Color::Black));
 
-    frame.render_stateful_widget(table, area, &mut app.ui.package_table_state);
+    frame.render_stateful_widget(table, area, props.package_table_state);
 
-    // Render scrollbar
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .begin_symbol(Some("▲"))
         .end_symbol(Some("▼"));
 
     let mut scrollbar_state = ScrollbarState::new(rows_count)
-        .position(app.ui.package_table_state.selected().unwrap_or(0));
+        .position(props.package_table_state.selected().unwrap_or(0));
 
     frame.render_stateful_widget(
         scrollbar,

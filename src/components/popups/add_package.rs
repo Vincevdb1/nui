@@ -13,26 +13,30 @@ use crate::components::popups::centered_rect;
 
 use std::collections::HashMap;
 
+pub struct AddPackageProps<'a> {
+    pub query: &'a str,
+    pub results: &'a [SearchResult],
+    pub channels: &'a [String],
+    pub is_searching: bool,
+    pub error: Option<&'a str>,
+    pub list_state: &'a mut ListState,
+    pub is_selecting_version: bool,
+    pub is_fetching_versions: bool,
+    pub versions: &'a [VersionInfo],
+    pub version_fetch_error: Option<&'a str>,
+    pub version_list_state: &'a mut ListState,
+    pub installed_packages: &'a HashMap<String, (String, String, bool, String)>,
+    pub is_shell_mode: bool,
+    pub inputs: &'a [Input],
+    pub selected_package_name: Option<&'a String>,
+    pub mode: Mode,
+    pub system_nixpkgs_version: Option<&'a String>,
+    pub system_nixpkgs_hash: Option<&'a String>,
+}
+
 pub fn render(
     frame: &mut Frame,
-    query: &str,
-    results: &[SearchResult],
-    channels: &[String],
-    is_searching: bool,
-    error: Option<&str>,
-    list_state: &mut ListState,
-    is_selecting_version: bool,
-    is_fetching_versions: bool,
-    versions: &[VersionInfo],
-    version_fetch_error: Option<&str>,
-    version_list_state: &mut ListState,
-    installed_packages: &HashMap<String, (String, String, bool, String)>,
-    is_shell_mode: bool,
-    inputs: &[Input],
-    selected_package_name: Option<&String>,
-    mode: Mode,
-    system_nixpkgs_version: Option<&String>,
-    system_nixpkgs_hash: Option<&String>,
+    props: &mut AddPackageProps,
 ) {
     let area = centered_rect(80, 70, frame.area());
     frame.render_widget(Clear, area);
@@ -53,7 +57,7 @@ pub fn render(
         ])
         .split(area);
 
-    let search_input = Paragraph::new(query).block(
+    let search_input = Paragraph::new(props.query).block(
         Block::default()
             .title(" Search Query ")
             .borders(Borders::ALL)
@@ -61,9 +65,9 @@ pub fn render(
     );
     frame.render_widget(search_input, chunks[0]);
 
-    if is_selecting_version {
-        let current_versions = if let Some(pkg_name) = selected_package_name {
-            results.iter()
+    if props.is_selecting_version {
+        let current_versions = if let Some(pkg_name) = props.selected_package_name {
+            props.results.iter()
                 .find(|res| &res.name == pkg_name)
                 .map(|res| res.versions.as_slice())
                 .unwrap_or(&[])
@@ -74,31 +78,31 @@ pub fn render(
         render_version_selection(
             frame,
             chunks[1],
-            is_fetching_versions,
-            version_fetch_error,
-            versions,
-            version_list_state,
-            inputs,
+            props.is_fetching_versions,
+            props.version_fetch_error,
+            props.versions,
+            props.version_list_state,
+            props.inputs,
             current_versions,
-            mode,
+            props.mode.clone(),
         );
     } else {
         render_package_search(
             frame,
             chunks[1],
-            is_searching,
-            error,
-            results,
-            channels,
-            list_state,
-            installed_packages,
-            is_shell_mode,
-            system_nixpkgs_version,
-            system_nixpkgs_hash,
+            props.is_searching,
+            props.error,
+            props.results,
+            props.channels,
+            props.list_state,
+            props.installed_packages,
+            props.is_shell_mode,
+            props.system_nixpkgs_version,
+            props.system_nixpkgs_hash,
         );
     }
 
-    let footer_text = if is_selecting_version {
+    let footer_text = if props.is_selecting_version {
         "Enter: Select Version | Esc: Back to Search"
     } else {
         "Type: Search | Enter: Add | M-Enter: Versions | Tab: Details | Esc: Close"

@@ -93,7 +93,6 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
 
     let json: serde_json::Value = serde_json::from_slice(&output.stdout)?;
 
-    // Also extract from AST to get content and names
     let flake_nix_path = flake_path.join("flake.nix");
     let ast_configs = if let Ok(content) = std::fs::read_to_string(flake_nix_path) {
         extract_outputs(&content)
@@ -129,7 +128,6 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
             if let Some(inner_obj_val) = inner_obj_val {
                 if let Some(inner_obj) = inner_obj_val.as_object() {
                     for (path, inner_val) in inner_obj {
-                        // For devShells, packages, legacyPackages, it's <type>.<system>.<name>
                         if matches!(config_type.as_str(), "devShells" | "packages" | "legacyPackages") {
                             let systems_obj_val = if is_v2 {
                                 inner_val.get("children")
@@ -148,7 +146,6 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
                                             content: None,
                                         };
 
-                                        // Try to find match in AST configs
                                         if let Some(ast_match) = ast_configs.iter().find(|c| {
                                             c.config_type == *config_type && c.path == full_path
                                         }) {
@@ -168,7 +165,6 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
                                 content: None,
                             };
 
-                            // Try to find match in AST configs
                             if let Some(ast_match) = ast_configs
                                 .iter()
                                 .find(|c| c.config_type == *config_type && c.path == *path)
@@ -214,7 +210,6 @@ pub fn extract_outputs(content: &str) -> Vec<Output> {
         use rnix::SyntaxKind;
         let mut body_val = outputs_val.clone();
         
-        // Find the lambda body, and if it's a let-in, go into the body of the let-in
         for node in ast.syntax().descendants() {
             if node.kind() == SyntaxKind::NODE_LAMBDA {
                 if let Some(body) = node.children().find(|c| {
@@ -228,7 +223,6 @@ pub fn extract_outputs(content: &str) -> Vec<Output> {
                 }) {
                     body_val = body.to_string();
                     
-                    // If the body is a let-in, look for replacements and use the actual body
                     if body.kind() == SyntaxKind::NODE_LET_IN {
                         for child in body.children() {
                             if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
@@ -252,7 +246,6 @@ pub fn extract_outputs(content: &str) -> Vec<Output> {
                             }
                         }
                         
-                        // Use the last child as the body of the let-in
                         if let Some(actual_body) = body.children().last() {
                             body_val = actual_body.to_string();
                         }
@@ -296,7 +289,6 @@ pub fn extract_outputs(content: &str) -> Vec<Output> {
                             if matches!(part.as_str(), "packages" | "buildInputs" | "nativeBuildInputs") {
                                 break;
                             }
-                            // Strip quotes from the part if they exist
                             let cleaned_part = part.trim_matches('"');
                             path_parts.push(cleaned_part);
                         }
@@ -306,9 +298,7 @@ pub fn extract_outputs(content: &str) -> Vec<Output> {
                             path = path.replace(k, v);
                         }
 
-                        // Try to look into the value if it's a nested set and not obviously a derivation
                         if let Ok(inner_collection) = nix_editor::parse::get_collection(val.clone()) {
-                            // If it's a system-specific set (like devShells.${system}), we should look inside
                             for (inner_key, inner_val) in inner_collection {
                                 let cleaned_inner_key = inner_key.trim_matches('"').to_string();
                                 let mut name_opt = None;
@@ -362,7 +352,6 @@ pub fn add_nixpkgs_input(content: &str, hash: &str) -> String {
 pub fn add_input(content: &str, name: &str, url: &str) -> String {
     let name = name.replace('.', "-");
 
-    // Check if input already exists
     let inputs = extract_inputs(content, None);
     let already_has_input = inputs.iter().any(|i| i.name == name);
 
@@ -451,7 +440,6 @@ pub fn add_input(content: &str, name: &str, url: &str) -> String {
         content.to_string()
     };
 
-    // Add to outputs pattern
     result = add_to_outputs_pattern(&result, &name);
 
     result
@@ -462,7 +450,6 @@ fn add_to_outputs_pattern(content: &str, name: &str) -> String {
     let root = ast.syntax();
     use rnix::SyntaxKind;
 
-    // Find outputs = ...
     let mut outputs_node = None;
     for node in root.descendants() {
         if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
@@ -479,7 +466,6 @@ fn add_to_outputs_pattern(content: &str, name: &str) -> String {
         return content.to_string();
     };
 
-    // Find the lambda
     let Some(lambda) = outputs_node
         .children()
         .find(|c| c.kind() == SyntaxKind::NODE_LAMBDA)
@@ -487,7 +473,6 @@ fn add_to_outputs_pattern(content: &str, name: &str) -> String {
         return content.to_string();
     };
 
-    // Find the pattern
     let Some(pattern) = lambda
         .children()
         .find(|c| c.kind() == SyntaxKind::NODE_PATTERN)
@@ -495,7 +480,6 @@ fn add_to_outputs_pattern(content: &str, name: &str) -> String {
         return content.to_string();
     };
 
-    // Check if name already exists in pattern
     for child in pattern.children_with_tokens() {
         let text = child.to_string();
         let trimmed = text.trim().trim_matches(',');
@@ -504,7 +488,6 @@ fn add_to_outputs_pattern(content: &str, name: &str) -> String {
         }
     }
 
-    // Find the closing brace of the pattern
     let mut close_brace = None;
     for child in pattern.children_with_tokens() {
         if let Some(token) = child.as_token() {
@@ -530,7 +513,6 @@ fn add_to_outputs_pattern(content: &str, name: &str) -> String {
         }
     }
 
-    // Determine if it's multiline and what the indentation is
     let mut is_multiline = false;
     for child in pattern.children_with_tokens() {
         if child.kind() == SyntaxKind::TOKEN_WHITESPACE && child.to_string().contains('\n') {
@@ -539,7 +521,6 @@ fn add_to_outputs_pattern(content: &str, name: &str) -> String {
     }
 
     if is_multiline {
-        // Find if there's a comma before the closing brace
         let mut has_comma = false;
         if let Some(prev) = close_brace.prev_sibling_or_token() {
             let mut curr = Some(prev);
@@ -582,7 +563,6 @@ fn add_to_outputs_pattern(content: &str, name: &str) -> String {
         let insertion = if has_comma {
             format!("{}{},\n{}", entry_indent, name, closing_brace_indent)
         } else {
-            // Check if there are any entries at all
             let has_entries = pattern.children().any(|c| {
                 matches!(
                     c.kind(),
@@ -606,7 +586,6 @@ fn add_to_outputs_pattern(content: &str, name: &str) -> String {
             result.insert_str(start, &insertion);
         }
     } else {
-        // Single line
         let has_entries = pattern.children().any(|c| {
             matches!(
                 c.kind(),

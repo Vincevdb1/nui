@@ -1,18 +1,22 @@
 use crate::nix::Output;
 use ratatui::{prelude::*, widgets::*};
 
+pub struct OutputsProps<'a> {
+    pub outputs: &'a [Output],
+    pub is_selected: bool,
+    pub selected_index: usize,
+}
+
 pub fn render(
-    outputs: &[Output],
+    props: &OutputsProps,
     frame: &mut Frame,
     area: Rect,
-    is_selected: bool,
-    selected_index: usize,
 ) {
-    let list_items: Vec<ListItem> = outputs
+    let list_items: Vec<ListItem> = props.outputs
         .iter()
         .enumerate()
         .map(|(i, output)| {
-            let (style, prefix_style) = if i == selected_index {
+            let (style, prefix_style) = if i == props.selected_index {
                 (
                     Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
                     Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
@@ -47,10 +51,10 @@ pub fn render(
         .collect();
 
     let block = Block::default()
-        .title(format!(" [4] Outputs ({}) ", outputs.len()))
+        .title(format!(" [4] Outputs ({}) ", props.outputs.len()))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(if is_selected {
+        .border_style(if props.is_selected {
             Style::default().fg(Color::Yellow)
         } else {
             Style::default()

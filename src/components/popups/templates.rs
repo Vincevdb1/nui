@@ -8,7 +8,12 @@ use ratatui::{
 
 use crate::components::popups::centered_rect;
 
-pub fn render(frame: &mut Frame, table_state: &mut TableState, templates: &[(String, String)]) {
+pub struct TemplatesProps<'a> {
+    pub table_state: &'a mut TableState,
+    pub templates: &'a [(String, String)],
+}
+
+pub fn render(frame: &mut Frame, props: &mut TemplatesProps) {
     let area = centered_rect(80, 60, frame.area());
     frame.render_widget(Clear, area);
 
@@ -27,7 +32,7 @@ pub fn render(frame: &mut Frame, table_state: &mut TableState, templates: &[(Str
         ])
         .split(area);
 
-    if templates.is_empty() {
+    if props.templates.is_empty() {
         let empty = Paragraph::new("No templates found in ~/.config/nui/templates/")
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::DarkGray));
@@ -49,7 +54,7 @@ pub fn render(frame: &mut Frame, table_state: &mut TableState, templates: &[(Str
             Cell::from("─".repeat(100)),
         ]));
 
-        for (t, d) in templates {
+        for (t, d) in props.templates {
             rows.push(Row::new(vec![
                 Cell::from(format!("  {}", t)),
                 Cell::from("│"),
@@ -73,7 +78,7 @@ pub fn render(frame: &mut Frame, table_state: &mut TableState, templates: &[(Str
         )
         .highlight_symbol(">> ");
 
-        frame.render_stateful_widget(table, chunks[0], table_state);
+        frame.render_stateful_widget(table, chunks[0], props.table_state);
     }
 
     let footer = Paragraph::new("Enter: Use Template | Esc: Skip / Close")

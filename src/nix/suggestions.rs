@@ -49,7 +49,6 @@ impl Suggestions {
                 .build();
 
             if let Ok(client) = client {
-                // Using protected=true usually gives us the release branches we care about
                 let response = client.get("https://api.github.com/repos/nixos/nixpkgs/branches?protected=true&per_page=100")
                     .send();
 
@@ -61,7 +60,6 @@ impl Suggestions {
                                     .into_iter()
                                     .filter_map(|b| {
                                         let branch = b.name;
-                                        // We want nixos-XX.XX branches, master, and nixpkgs-unstable
                                         if branch.starts_with("nixos-")
                                             || branch == "nixpkgs-unstable"
                                             || branch == "master"
@@ -74,14 +72,13 @@ impl Suggestions {
                                     .collect();
 
                                 let mut sorted_branches = branches;
-                                // Sort by name, but keep master and nixpkgs-unstable at the top if possible
                                 sorted_branches.sort_by(|a, b| {
                                     if a.0 == "master" || a.0 == "nixpkgs-unstable" {
                                         std::cmp::Ordering::Less
                                     } else if b.0 == "master" || b.0 == "nixpkgs-unstable" {
                                         std::cmp::Ordering::Greater
                                     } else {
-                                        b.0.cmp(&a.0) // Reverse version sort
+                                        b.0.cmp(&a.0)
                                     }
                                 });
 

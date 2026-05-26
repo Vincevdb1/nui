@@ -53,7 +53,17 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
     match selected_index {
         1 => {
             if app.mode == crate::state::Mode::Shell {
-                shell::render(app, frame, inner_area);
+                shell::render(
+                    &mut shell::ShellProps {
+                        shell_packages: &app.shell_packages,
+                        selected_shell_packages: &app.ui.selected_shell_packages,
+                        package_info: &app.domain.package_info,
+                        shell_package_list_state: &mut app.ui.shell_package_list_state,
+                        nxv_update_progress: app.domain.nxv_update_progress.as_deref(),
+                    },
+                    frame,
+                    inner_area,
+                );
             } else {
                 title::render(
                     frame,
@@ -64,8 +74,27 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect, selected_index: usiz
                 );
             }
         }
-        2 | 4 => packages::render(app, frame, inner_area),
-        3 => inputs::render(app, frame, inner_area),
+        2 | 4 => packages::render(
+            &mut packages::PackagesProps {
+                package_info: &app.domain.package_info,
+                fetching_package_details: app.ui.fetching_package_details,
+                throbber_state: &mut app.ui.throbber_state,
+                selected_packages: &app.ui.selected_packages,
+                pinned_packages: &app.ui.pinned_packages,
+                package_updates: &app.domain.package_updates,
+                package_table_state: &mut app.ui.package_table_state,
+            },
+            frame,
+            inner_area,
+        ),
+        3 => inputs::render(
+            &mut inputs::InputsProps {
+                inputs: &app.domain.inputs,
+                input_table_state: &mut app.ui.input_table_state,
+            },
+            frame,
+            inner_area,
+        ),
         _ => {
             let p = Paragraph::new("Select a box in the first column to view content.")
                 .alignment(Alignment::Center);

@@ -1,8 +1,18 @@
-use crate::app::App;
 use ratatui::{prelude::*, widgets::*};
 
-pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
-    if app.shell_packages.is_empty() {
+use std::collections::{HashMap, HashSet};
+use ratatui::widgets::TableState;
+
+pub struct ShellProps<'a> {
+    pub shell_packages: &'a [String],
+    pub selected_shell_packages: &'a HashSet<String>,
+    pub package_info: &'a HashMap<String, (String, String, bool, String)>,
+    pub shell_package_list_state: &'a mut TableState,
+    pub nxv_update_progress: Option<&'a str>,
+}
+
+pub fn render(props: &mut ShellProps, frame: &mut Frame, area: Rect) {
+    if props.shell_packages.is_empty() {
         let p = Paragraph::new(vec![
             Line::from("No packages added yet."),
             Line::from(""),
@@ -37,9 +47,9 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         Cell::from("─".repeat(100)),
     ]));
 
-    for p in &app.shell_packages {
-        let is_selected = app.ui.selected_shell_packages.contains(p);
-        let has_any_selected = !app.ui.selected_shell_packages.is_empty();
+    for p in props.shell_packages {
+        let is_selected = props.selected_shell_packages.contains(p);
+        let has_any_selected = !props.selected_shell_packages.is_empty();
         
         let select_marker = if has_any_selected {
             if is_selected {
@@ -56,12 +66,10 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         let mut hash = "-------".to_string();
         let mut description = String::new();
 
-        // 1. Try lookup in package_info first (for metadata from templates or direct adds)
-        if let Some((desc, ver, _, _)) = app.domain.package_info.get(p) {
+        if let Some((desc, ver, _, _)) = props.package_info.get(p) {
             version = ver.clone();
             description = desc.clone();
         } else {
-            // 2. Fallback to parsing the string if it contains extra info
             if p.contains('@') {
                 if let Some((rest, v)) = p.rsplit_once('@') {
                     version = v.to_string();
@@ -132,10 +140,9 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         );
 
-    frame.render_stateful_widget(table, area, &mut app.ui.shell_package_list_state);
+    frame.render_stateful_widget(table, area, props.shell_package_list_state);
 
-    // Render NXV update progress if active
-    if let Some(progress) = app.domain.nxv_update_progress.as_deref() {
+    if let Some(progress) = props.nxv_update_progress {
         let progress_area = Rect {
             x: area.x + 2,
             y: area.y + area.height.saturating_sub(1),
@@ -149,13 +156,12 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         frame.render_widget(p, progress_area);
     }
 
-    // Render scrollbar
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .begin_symbol(Some("▲"))
         .end_symbol(Some("▼"));
 
     let mut scrollbar_state = ScrollbarState::new(rows_count)
-        .position(app.ui.shell_package_list_state.selected().unwrap_or(0));
+        .position(props.shell_package_list_state.selected().unwrap_or(0));
 
     frame.render_stateful_widget(
         scrollbar,

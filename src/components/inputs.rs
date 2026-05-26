@@ -1,8 +1,13 @@
 use crate::nix::Input;
 use ratatui::{prelude::*, widgets::*};
 
-pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect, is_selected: bool) {
-    let list_items: Vec<ListItem> = inputs
+pub struct InputsProps<'a> {
+    pub inputs: &'a [Input],
+    pub is_selected: bool,
+}
+
+pub fn render(props: &InputsProps, frame: &mut Frame, area: Rect) {
+    let list_items: Vec<ListItem> = props.inputs
         .iter()
         .map(|input| {
             ListItem::new(Line::from(vec![Span::styled(
@@ -16,7 +21,7 @@ pub fn render(inputs: &[Input], frame: &mut Frame, area: Rect, is_selected: bool
         .title(" [3] Inputs ")
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(if is_selected {
+        .border_style(if props.is_selected {
             Style::default().fg(Color::Yellow)
         } else {
             Style::default()

@@ -5,6 +5,7 @@ mod action;
 mod app;
 mod components;
 mod context;
+pub mod handlers;
 mod nix;
 mod state;
 mod tui;
@@ -152,7 +153,6 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
                         if let Some(i) = app.ui.version_list_state.selected() {
                             let mut all_items = Vec::new();
 
-                            // 1. Get Available Inputs
                             if app.mode == crate::state::Mode::Flake {
                                 if let Some(pkg_name) = &app.ui.selected_package_name {
                                     let result_opt = app.domain.package_search_results.iter().find(|res| &res.name == pkg_name);
@@ -168,12 +168,10 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
                                 }
                             }
 
-                            // 2. Get Historical Versions
                             for v in &app.domain.package_versions {
                                 all_items.push((v.version.clone(), None, Some(v.clone())));
                             }
 
-                            // 3. Sort by version (descending) - must match render logic
                             all_items.sort_by(|a, b| b.0.cmp(&a.0));
 
                             if let Some(item) = all_items.get(i) {

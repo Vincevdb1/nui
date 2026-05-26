@@ -62,15 +62,19 @@ pub fn count_lines(logs: &[LogEntry]) -> usize {
     count
 }
 
+pub struct CommandLogProps<'a> {
+    pub is_selected: bool,
+    pub logs: &'a [LogEntry],
+    pub state: &'a mut ListState,
+    pub progress: Option<&'a str>,
+}
+
 pub fn render(
     frame: &mut Frame,
     area: Rect,
-    is_selected: bool,
-    logs: &[LogEntry],
-    state: &mut ListState,
-    progress: Option<&str>,
+    props: &mut CommandLogProps,
 ) {
-    let title = if let Some(p) = progress {
+    let title = if let Some(p) = props.progress {
         format!(" [5] Command Log (Updating NXV Index: {}) ", p)
     } else {
         " [5] Command Log ".to_string()
@@ -80,7 +84,7 @@ pub fn render(
         .title(title)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(if is_selected {
+        .border_style(if props.is_selected {
             Style::default().fg(Color::Yellow)
         } else {
             Style::default()
@@ -88,7 +92,7 @@ pub fn render(
 
     let mut list_items: Vec<ListItem> = Vec::new();
 
-    for log in logs {
+    for log in props.logs {
         match log {
             LogEntry::Action { action, command } => {
                 list_items.push(ListItem::new(Line::from(vec![Span::styled(
@@ -138,5 +142,5 @@ pub fn render(
         .block(block)
         .highlight_style(Style::default());
 
-    frame.render_stateful_widget(list, area, state);
+    frame.render_stateful_widget(list, area, props.state);
 }

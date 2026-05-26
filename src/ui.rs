@@ -1,3 +1,5 @@
+pub mod list;
+
 use crate::app::App;
 use crate::components::*;
 use ratatui::{
@@ -13,16 +15,13 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         .split(frame.area());
 
     if app.mode == crate::state::Mode::Shell {
-        // Full screen (minus footer) for shell packages
         content::render(app, frame, chunks[0], 1);
     } else {
-        // Create the 2nd row layout (2 columns)
         let body_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(33), Constraint::Min(0)])
             .split(chunks[0]);
 
-        // Column 1: 4 rows (Title + 3 even rows)
         let col1_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -46,19 +45,31 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         };
 
         title::render(frame, col1_chunks[0], app.ui.selected_index == 1);
-        context::render(app, frame, col1_chunks[1], app.ui.selected_index == 2);
+        context::render(
+            &context::ContextProps {
+                nix_files: &app.domain.nix_files,
+                selected_nix_file_index: app.ui.selected_nix_file_index,
+                is_selected: app.ui.selected_index == 2,
+            },
+            frame,
+            col1_chunks[1],
+        );
         inputs::render(
-            &app.domain.inputs,
+            &inputs::InputsProps {
+                inputs: &app.domain.inputs,
+                is_selected: app.ui.selected_index == 3,
+            },
             frame,
             col1_chunks[2],
-            app.ui.selected_index == 3,
         );
         outputs::render(
-            &app.domain.outputs,
+            &outputs::OutputsProps {
+                outputs: &app.domain.outputs,
+                is_selected: app.ui.selected_index == 4,
+                selected_index: app.ui.selected_output_index,
+            },
             frame,
             col1_chunks[3],
-            app.ui.selected_index == 4,
-            app.ui.selected_output_index,
         );
 
         if app.ui.selected_index != 5 {
@@ -66,19 +77,23 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             command_log::render(
                 frame,
                 col2_chunks[1],
-                app.ui.selected_index == 5,
-                &app.domain.logs,
-                &mut app.ui.command_log_state,
-                app.domain.nxv_update_progress.as_deref(),
+                &mut command_log::CommandLogProps {
+                    is_selected: app.ui.selected_index == 5,
+                    logs: &app.domain.logs,
+                    state: &mut app.ui.command_log_state,
+                    progress: app.domain.nxv_update_progress.as_deref(),
+                },
             );
         } else {
             command_log::render(
                 frame,
                 col2_chunks[0],
-                app.ui.selected_index == 5,
-                &app.domain.logs,
-                &mut app.ui.command_log_state,
-                app.domain.nxv_update_progress.as_deref(),
+                &mut command_log::CommandLogProps {
+                    is_selected: app.ui.selected_index == 5,
+                    logs: &app.domain.logs,
+                    state: &mut app.ui.command_log_state,
+                    progress: app.domain.nxv_update_progress.as_deref(),
+                },
             );
         }
     }
@@ -104,7 +119,13 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     }
 
     if app.ui.show_templates {
-        popups::templates::render(frame, &mut app.ui.template_list_state, &app.ui.templates);
+        popups::templates::render(
+            frame,
+            &mut popups::templates::TemplatesProps {
+                table_state: &mut app.ui.template_list_state,
+                templates: &app.ui.templates,
+            },
+        );
     }
 
     if app.ui.is_saving_shell_template {
@@ -128,34 +149,38 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     if app.ui.is_adding_input {
         popups::add_input::render(
             frame,
-            &app.ui.new_input_name,
-            &app.ui.new_input_url,
-            app.ui.input_cursor,
-            &mut app.domain.suggestions,
+            &mut popups::add_input::AddInputProps {
+                name: &app.ui.new_input_name,
+                url: &app.ui.new_input_url,
+                cursor: app.ui.input_cursor,
+                suggestions: &mut app.domain.suggestions,
+            },
         );
     }
 
     if app.ui.is_adding_package {
         popups::add_package::render(
             frame,
-            &app.ui.package_search_query,
-            &app.domain.package_search_results,
-            &app.domain.searched_channels,
-            app.ui.is_searching_packages,
-            app.ui.package_search_error.as_deref(),
-            &mut app.ui.package_search_state,
-            app.ui.is_selecting_version,
-            app.ui.is_fetching_versions,
-            &app.domain.package_versions,
-            app.ui.version_fetch_error.as_deref(),
-            &mut app.ui.version_list_state,
-            &app.domain.package_info,
-            app.mode == crate::state::Mode::Shell,
-            &app.domain.inputs,
-            app.ui.selected_package_name.as_ref(),
-            app.mode.clone(),
-            app.domain.system_nixpkgs_version.as_ref(),
-            app.domain.system_nixpkgs_hash.as_ref(),
+            &mut popups::add_package::AddPackageProps {
+                query: &app.ui.package_search_query,
+                results: &app.domain.package_search_results,
+                channels: &app.domain.searched_channels,
+                is_searching: app.ui.is_searching_packages,
+                error: app.ui.package_search_error.as_deref(),
+                list_state: &mut app.ui.package_search_state,
+                is_selecting_version: app.ui.is_selecting_version,
+                is_fetching_versions: app.ui.is_fetching_versions,
+                versions: &app.domain.package_versions,
+                version_fetch_error: app.ui.version_fetch_error.as_deref(),
+                version_list_state: &mut app.ui.version_list_state,
+                installed_packages: &app.domain.package_info,
+                is_shell_mode: app.mode == crate::state::Mode::Shell,
+                inputs: &app.domain.inputs,
+                selected_package_name: app.ui.selected_package_name.as_ref(),
+                mode: app.mode.clone(),
+                system_nixpkgs_version: app.domain.system_nixpkgs_version.as_ref(),
+                system_nixpkgs_hash: app.domain.system_nixpkgs_hash.as_ref(),
+            },
         );
     }
 

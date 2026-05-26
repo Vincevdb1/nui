@@ -8,12 +8,16 @@ use ratatui::{
 
 use crate::components::popups::centered_rect;
 
+pub struct AddInputProps<'a> {
+    pub name: &'a str,
+    pub url: &'a str,
+    pub cursor: usize,
+    pub suggestions: &'a mut Suggestions,
+}
+
 pub fn render(
     frame: &mut Frame,
-    name: &str,
-    url: &str,
-    cursor: usize,
-    suggestions: &mut Suggestions,
+    props: &mut AddInputProps,
 ) {
     let area = centered_rect(80, 70, frame.area());
     frame.render_widget(Clear, area);
@@ -34,7 +38,7 @@ pub fn render(
         ])
         .split(area);
 
-    let list_block_style = if cursor == 0 {
+    let list_block_style = if props.cursor == 0 {
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD)
@@ -42,13 +46,13 @@ pub fn render(
         Style::default()
     };
 
-    let list_title = if suggestions.is_loading {
+    let list_title = if props.suggestions.is_loading {
         " Suggestions (Loading...) "
     } else {
         " Suggestions (Enter to add) "
     };
 
-    if suggestions.is_loading {
+    if props.suggestions.is_loading {
         let block = Block::default()
             .title(list_title)
             .borders(Borders::ALL)
@@ -68,7 +72,7 @@ pub fn render(
         let loading =
             Paragraph::new("Loading branches from GitHub...").alignment(Alignment::Center);
         frame.render_widget(loading, vertical_chunks[1]);
-    } else if suggestions.filtered.is_empty() {
+    } else if props.suggestions.filtered.is_empty() {
         let block = Block::default()
             .title(list_title)
             .borders(Borders::ALL)
@@ -80,12 +84,12 @@ pub fn render(
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Percentage(50),
-                Constraint::Length(if suggestions.error.is_some() { 4 } else { 1 }),
+                Constraint::Length(if props.suggestions.error.is_some() { 4 } else { 1 }),
                 Constraint::Percentage(50),
             ])
             .split(area);
 
-        if let Some(err) = &suggestions.error {
+        if let Some(err) = &props.suggestions.error {
             use ratatui::text::{Line, Span};
             let error_text = vec![
                 Line::from(vec![Span::styled("Error fetching suggestions:", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))]),
@@ -100,13 +104,13 @@ pub fn render(
             frame.render_widget(empty, vertical_chunks[1]);
         }
     } else {
-        let items: Vec<ListItem> = suggestions
+        let items: Vec<ListItem> = props.suggestions
             .filtered
             .iter()
             .map(|(name, _)| ListItem::new(format!("  {}", name)))
             .collect();
 
-        let highlight_style = if cursor == 0 {
+        let highlight_style = if props.cursor == 0 {
             Style::default()
                 .bg(Color::Cyan)
                 .fg(Color::Black)
@@ -125,13 +129,13 @@ pub fn render(
             .highlight_style(highlight_style)
             .highlight_symbol(">> ");
 
-        frame.render_stateful_widget(list, chunks[0], &mut suggestions.list_state);
+        frame.render_stateful_widget(list, chunks[0], &mut props.suggestions.list_state);
     }
 
     let manual_block = Block::default()
         .title(" Manual Input ")
         .borders(Borders::ALL)
-        .border_style(if cursor == 1 || cursor == 2 {
+        .border_style(if props.cursor == 1 || props.cursor == 2 {
             Style::default().fg(Color::Cyan)
         } else {
             Style::default()
@@ -146,7 +150,7 @@ pub fn render(
         .constraints([Constraint::Length(3), Constraint::Length(3)])
         .split(manual_area);
 
-    let name_style = if cursor == 1 {
+    let name_style = if props.cursor == 1 {
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD)
@@ -154,7 +158,7 @@ pub fn render(
         Style::default()
     };
 
-    let url_style = if cursor == 2 {
+    let url_style = if props.cursor == 2 {
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD)
@@ -162,7 +166,7 @@ pub fn render(
         Style::default()
     };
 
-    let name_input = Paragraph::new(name).block(
+    let name_input = Paragraph::new(props.name).block(
         Block::default()
             .title(" Name ")
             .borders(Borders::ALL)
@@ -170,7 +174,7 @@ pub fn render(
     );
     frame.render_widget(name_input, manual_chunks[0]);
 
-    let url_input = Paragraph::new(url).block(
+    let url_input = Paragraph::new(props.url).block(
         Block::default()
             .title(" URL ")
             .borders(Borders::ALL)
@@ -178,7 +182,7 @@ pub fn render(
     );
     frame.render_widget(url_input, manual_chunks[1]);
 
-    let footer_text = match cursor {
+    let footer_text = match props.cursor {
         0 => "Enter: Select | j/k: Nav Suggestions | Tab: Next Field | Esc: Close",
         1 => "Type Input Name... | Tab: Next Field | Esc: Close",
         2 => "Type Input URL... | Enter: Add | Tab: Next Field | Esc: Close",

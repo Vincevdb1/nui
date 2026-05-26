@@ -18,7 +18,7 @@ pub fn find_nix_files() -> Vec<NixFile> {
         .filter_map(|e| e.ok())
         .filter(|e| {
             let name = e.file_name().to_str().unwrap_or("");
-            name == "flake.nix" // || name == "shell.nix" || name == "default.nix"
+            name == "flake.nix"
         })
     {
         if let Ok(relative_path) = entry.path().strip_prefix(&current_dir) {
