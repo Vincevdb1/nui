@@ -1116,6 +1116,99 @@ pub fn remove_packages(
     Ok(())
 }
 
+#[allow(dead_code)]
+pub fn replace_package(
+    flake_path: &Path,
+    system: &str,
+    shell_name: &str,
+    old_pkg: &str,
+    new_pkg: &str,
+) -> Result<()> {
+    let content = std::fs::read_to_string(flake_path)?;
+    let ast = Root::parse(&content);
+    let root = ast.syntax();
+
+    if let Some(shell_node) = find_shell_node(&root, system, shell_name) {
+        if let Some(shell_attr_set) = get_shell_attr_set(&shell_node) {
+            let new_content =
+                replace_package_in_shell_attr_set(&shell_attr_set, old_pkg, new_pkg, &content);
+            if new_content != content {
+                std::fs::write(flake_path, new_content)?;
+            }
+            return Ok(());
+        }
+    }
+
+    Err(color_eyre::eyre::eyre!(
+        "Could not find or modify devShells packages in flake.nix"
+    ))
+}
+
+fn replace_package_in_shell_attr_set(
+    set_node: &SyntaxNode,
+    old_pkg: &str,
+    new_pkg: &str,
+    content: &str,
+) -> String {
+    let mut packages_nodes = Vec::new();
+    for child in set_node.children() {
+        if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+            if let Some(attrpath) = child.children().find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH)
+            {
+                let path_text = attrpath.to_string().trim().to_string();
+                if path_text == "packages"
+                    || path_text == "buildInputs"
+                    || path_text == "nativeBuildInputs"
+                {
+                    if let Some(val) = child.children().find(|c| {
+                        !matches!(
+                            c.kind(),
+                            SyntaxKind::NODE_ATTRPATH
+                                | SyntaxKind::TOKEN_COMMENT
+                                | SyntaxKind::TOKEN_WHITESPACE
+                        )
+                    }) {
+                        if val.kind() == SyntaxKind::NODE_LIST {
+                            packages_nodes.push(val);
+                        } else if val.kind() == SyntaxKind::NODE_WITH {
+                            if let Some(list) =
+                                val.children().find(|c| c.kind() == SyntaxKind::NODE_LIST)
+                            {
+                                packages_nodes.push(list);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut current_content = content.to_string();
+    for list_node in packages_nodes {
+        current_content = replace_in_list(&list_node, old_pkg, new_pkg, &current_content);
+    }
+
+    current_content
+}
+
+#[allow(dead_code)]
+fn replace_in_list(list_node: &SyntaxNode, old_pkg: &str, new_pkg: &str, content: &str) -> String {
+    let mut to_replace = Vec::new();
+    for child in list_node.children() {
+        if (child.kind() == SyntaxKind::NODE_SELECT || child.kind() == SyntaxKind::NODE_IDENT)
+            && child.to_string().trim() == old_pkg
+        {
+            to_replace.push((child.text_range().start(), child.text_range().end()));
+        }
+    }
+
+    let mut result = content.to_string();
+    for (start, end) in to_replace.into_iter().rev() {
+        result.replace_range(usize::from(start)..usize::from(end), new_pkg);
+    }
+    result
+}
+
 pub fn remove_package(flake_path: &Path, system: &str, shell_name: &str, pkg_name: &str) -> Result<()> {
     remove_packages(flake_path, system, shell_name, &[pkg_name.to_string()])
 }

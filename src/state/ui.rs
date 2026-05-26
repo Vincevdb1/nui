@@ -35,9 +35,20 @@ pub struct UiState {
     pub package_fetch_id: usize,
     pub selected_packages: std::collections::HashSet<String>,
     pub selected_shell_packages: std::collections::HashSet<String>,
-    }
+    pub pinned_packages: std::collections::HashSet<String>,
+    pub show_help: bool,
+    pub show_templates: bool,
+    pub is_saving_shell_template: bool,
+    pub is_confirming_template_overwrite: bool,
+    pub pending_template_name: Option<String>,
+    pub new_template_filename: String,
+    pub new_template_description: String,
+    pub template_cursor: usize,
+    pub template_list_state: ratatui::widgets::TableState,
+    pub templates: Vec<(String, String)>,
+}
 
-    impl Default for UiState {
+impl Default for UiState {
     fn default() -> Self {
         Self {
             selected_index: 2,
@@ -71,8 +82,17 @@ pub struct UiState {
             package_fetch_id: 0,
             selected_packages: std::collections::HashSet::new(),
             selected_shell_packages: std::collections::HashSet::new(),
+            pinned_packages: std::collections::HashSet::new(),
+            show_help: false,
+            show_templates: false,
+            is_saving_shell_template: false,
+            is_confirming_template_overwrite: false,
+            pending_template_name: None,
+            new_template_filename: String::new(),
+            new_template_description: String::new(),
+            template_cursor: 0,
+            template_list_state: ratatui::widgets::TableState::default(),
+            templates: Vec::new(),
         }
     }
-    }
-
-
+}

@@ -84,20 +84,46 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     }
 
     let footer_text = if app.mode == crate::state::Mode::Shell {
-        "a: Add | d: Remove | s: Start Shell | m: Switch Mode | j/k: Select | Space: Multi-select | q: Quit"
+        "a: Add | d: Remove | i: Info | p: Pin | s: Start Shell | m: Mode | t: Templates | j/k: Select | Space: Multi-select | ?: Help | q: Quit"
     } else {
         match app.ui.selected_index {
-            1 => "Tab: Switch focus | m: Switch Mode | 1-5: Select tab | q: Quit",
-            2 => "a: Add | d: Remove | i: Info | m: Mode | Shift-j/k: Select | j/k: Navigate pkgs | Space: Multi-select | Tab: Focus | q: Quit",
-            3 => "a: Add Input | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
-            4 => "j/k: Select Output | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
-            5 => "j/k: Scroll Logs | m: Switch Mode | Tab: Switch focus | 1-5: Select tab | q: Quit",
-            _ => "Press 'm' to switch mode, 'Tab' to switch focus, 'q' to quit",
+            1 => "Tab: Switch focus | m: Switch Mode | t: Templates | 1-5: Select tab | ?: Help | q: Quit",
+            2 => "a: Add | d: Remove | i: Info | p: Pin | m: Mode | t: Templates | Shift-j/k: Select | j/k: Navigate pkgs | Space: Multi-select | ?: Help | q: Quit",
+            3 => "a: Add Input | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit",
+            4 => "j/k: Select Output | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit",
+            5 => "j/k: Scroll Logs | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit",
+            _ => "Press 'm' to switch mode, 't' for templates, 'Tab' to switch focus, '?' for help, 'q' to quit",
         }
     };
 
     let footer = Paragraph::new(footer_text).block(Block::default().borders(Borders::NONE));
     frame.render_widget(footer, chunks[1]);
+
+    if app.ui.show_help {
+        popups::help::render(frame);
+    }
+
+    if app.ui.show_templates {
+        popups::templates::render(frame, &mut app.ui.template_list_state, &app.ui.templates);
+    }
+
+    if app.ui.is_saving_shell_template {
+        popups::save_shell_template::render(
+            frame,
+            &app.ui.new_template_filename,
+            &app.ui.new_template_description,
+            app.ui.template_cursor,
+        );
+    }
+
+    if app.ui.is_confirming_template_overwrite {
+        let name = app.ui.pending_template_name.as_deref().unwrap_or("Template");
+        popups::confirm::render(
+            frame,
+            "Overwrite flake.nix?",
+            &format!("Applying '{}' will OVERWRITE your existing flake.nix. Continue?", name),
+        );
+    }
 
     if app.ui.is_adding_input {
         popups::add_input::render(
@@ -142,30 +168,73 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             {
                 popups::add_package::render_details(frame, result);
             }
-        } else if app.ui.selected_index == 2 {
+        } else if app.ui.selected_index == 2 || (app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1) {
             let mut all_packages = Vec::new();
-            for (name, (description, version, is_unfree, source_input)) in &app.domain.package_info {
-                all_packages.push(crate::state::domain::SearchResult {
-                    name: name.clone(),
-                    description: description.clone(),
-                    versions: vec![crate::state::domain::ChannelVersion {
-                        version: version.clone(),
-                        channel: "current".to_string(),
-                        locked_version: None,
-                    }],
-                    platforms: Vec::new(),
-                    is_unfree: *is_unfree,
-                    source_input: if source_input.is_empty() {
-                        None
-                    } else {
-                        Some(source_input.clone())
-                    },
-                    hash: None,
-                });
-            }
-            all_packages.sort_by(|a, b| a.name.cmp(&b.name));
+            if app.mode == crate::state::Mode::Shell {
+                for p in &app.shell_packages {
+                    let mut name = p.clone();
+                    let mut version = "Unknown".to_string();
+                    if p.contains('@') {
+                        if let Some((rest, v)) = p.rsplit_once('@') {
+                            version = v.to_string();
+                            if (rest.starts_with("nixpkgs/") || rest.starts_with("system/")) && rest.contains('#') {
+                                if let Some((_, suffix)) = rest.split_once('#') {
+                                    name = suffix.to_string();
+                                }
+                            } else {
+                                name = rest.to_string();
+                            }
+                        }
+                    } else if (p.starts_with("nixpkgs/") || p.starts_with("system/")) && p.contains('#') {
+                        if let Some((_, suffix)) = p.split_once('#') {
+                            name = suffix.to_string();
+                        }
+                    }
 
-            if let Some(i) = app.ui.package_table_state.selected() {
+                    all_packages.push(crate::state::domain::SearchResult {
+                        name: name.clone(),
+                        description: "".to_string(),
+                        versions: vec![crate::state::domain::ChannelVersion {
+                            version: version.clone(),
+                            channel: "shell".to_string(),
+                            locked_version: None,
+                        }],
+                        platforms: Vec::new(),
+                        is_unfree: false,
+                        source_input: None,
+                        hash: None,
+                    });
+                }
+            } else {
+                for (name, (description, version, is_unfree, source_input)) in &app.domain.package_info {
+                    all_packages.push(crate::state::domain::SearchResult {
+                        name: name.clone(),
+                        description: description.clone(),
+                        versions: vec![crate::state::domain::ChannelVersion {
+                            version: version.clone(),
+                            channel: "current".to_string(),
+                            locked_version: None,
+                        }],
+                        platforms: Vec::new(),
+                        is_unfree: *is_unfree,
+                        source_input: if source_input.is_empty() {
+                            None
+                        } else {
+                            Some(source_input.clone())
+                        },
+                        hash: None,
+                    });
+                }
+                all_packages.sort_by(|a, b| a.name.cmp(&b.name));
+            }
+
+            let selected_idx = if app.mode == crate::state::Mode::Shell {
+                app.ui.shell_package_list_state.selected()
+            } else {
+                app.ui.package_table_state.selected()
+            };
+
+            if let Some(i) = selected_idx {
                 if i > 0 {
                     if let Some(result) = all_packages.get(i - 1) {
                         popups::add_package::render_details(frame, result);

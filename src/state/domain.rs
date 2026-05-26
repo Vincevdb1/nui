@@ -37,6 +37,7 @@ pub struct NixSearchCliPackage {
 pub struct NixSearchCliLicense {
     #[serde(rename = "fullName")]
     pub full_name: String,
+    #[allow(dead_code)]
     pub url: Option<String>,
 }
 
@@ -134,6 +135,7 @@ struct NixSearchPackage {
     version: Option<String>,
 }
 
+#[allow(dead_code)]
 pub fn nix_search(query: String, rev: String) -> Result<Vec<SearchPackage>, String> {
     let flake_url = format!("github:NixOS/nixpkgs/{}", rev);
     nix_search_flake(flake_url, query)

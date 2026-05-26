@@ -29,6 +29,77 @@ pub struct AppState {
     pub rx: Receiver<Action>,
 }
 
+pub fn load_templates() -> Vec<(String, String)> {
+    let mut templates = Vec::new();
+    if let Some(config_dir) = dirs::config_dir() {
+        let template_dir = config_dir.join("nui").join("templates");
+        if let Ok(entries) = std::fs::read_dir(template_dir) {
+            for entry in entries.flatten() {
+                if let Ok(file_type) = entry.file_type() {
+                    if file_type.is_file() {
+                        let path = entry.path();
+                        if let Some(name) = entry.file_name().to_str() {
+                            let description = if let Ok(content) = std::fs::read_to_string(&path) {
+                                // Simple extraction of description
+                                content.lines()
+                                    .find(|l| l.trim().starts_with("description"))
+                                    .and_then(|l| l.split('"').nth(1))
+                                    .unwrap_or("No description")
+                                    .to_string()
+                            } else {
+                                "No description".to_string()
+                            };
+                            templates.push((name.to_string(), description));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    templates
+}
+
+fn extract_packages_from_template(content: &str) -> Vec<String> {
+    let mut packages = Vec::new();
+    
+    // Look for various package list patterns in Nix
+    let patterns = ["packages = [", "buildInputs = [", "nativeBuildInputs = ["];
+    
+    for pattern in patterns {
+        let mut current_pos = 0;
+        while let Some(start) = content[current_pos..].find(pattern) {
+            let actual_start = current_pos + start + pattern.len();
+            let rest = &content[actual_start..];
+            if let Some(end) = rest.find("];") {
+                let list = &rest[..end];
+                for item in list.split_whitespace() {
+                    // pkgs.rustc -> rustc, or "rustc" -> rustc
+                    let mut pkg = item;
+                    if let Some(stripped) = pkg.strip_prefix("pkgs.") {
+                        pkg = stripped;
+                    }
+                    let clean_pkg = pkg.trim_matches(|c| c == '"' || c == '\'' || c == ';' || c == '[' || c == ']' || c == '(' || c == ')');
+                    
+                    if !clean_pkg.is_empty() 
+                       && clean_pkg != "with" 
+                       && clean_pkg != "pkgs" 
+                       && !clean_pkg.starts_with("self.")
+                       && !clean_pkg.contains("${") 
+                    {
+                        if !packages.contains(&clean_pkg.to_string()) {
+                            packages.push(clean_pkg.to_string());
+                        }
+                    }
+                }
+                current_pos = actual_start + end + 2;
+            } else {
+                break;
+            }
+        }
+    }
+    packages
+}
+
 impl Default for AppState {
     fn default() -> Self {
         Self::new(Mode::Flake, Vec::new())
@@ -98,6 +169,7 @@ impl AppState {
             tx,
             rx,
         };
+        app.ui.templates = load_templates();
 
         if app.mode == Mode::Shell {
             app.ui.selected_index = 1;
@@ -450,6 +522,38 @@ impl AppState {
                         None => 1,
                     };
                     self.ui.input_table_state.select(Some(i));
+                }
+            }
+            Action::MoveTemplateSelectionDown => {
+                let count = self.ui.templates.len();
+                if count > 0 {
+                    let i = match self.ui.template_list_state.selected() {
+                        Some(i) => {
+                            if i >= count + 1 {
+                                2
+                            } else {
+                                i + 1
+                            }
+                        }
+                        None => 2,
+                    };
+                    self.ui.template_list_state.select(Some(i));
+                }
+            }
+            Action::MoveTemplateSelectionUp => {
+                let count = self.ui.templates.len();
+                if count > 0 {
+                    let i = match self.ui.template_list_state.selected() {
+                        Some(i) => {
+                            if i <= 2 {
+                                count + 1
+                            } else {
+                                i - 1
+                            }
+                        }
+                        None => 2,
+                    };
+                    self.ui.template_list_state.select(Some(i));
                 }
             }
             Action::RemoveInput(input_name) => {
@@ -1020,26 +1124,41 @@ impl AppState {
             }
             Action::RefreshContext => {
                 if let Some(file) = self.domain.nix_files.get(self.ui.selected_nix_file_index) {
-                    let content = std::fs::read_to_string(&file.path).unwrap_or_default();
-                    let lock_path = file.path.parent().unwrap_or(std::path::Path::new(".")).join("flake.lock");
-                    let lock_content = std::fs::read_to_string(lock_path).ok();
-                    self.domain.inputs = extract_inputs(&content, lock_content.as_deref());
-                    match fetch_outputs(
-                        file.path.parent().unwrap_or(std::path::Path::new(".")),
-                    ) {
-                        Ok(outputs) => self.domain.outputs = outputs,
-                        Err(e) => {
-                            crate::log_output("Nix Error", format!("Failed to fetch outputs: {}", e));
-                            self.domain.outputs = Vec::new();
-                        }
-                    }
-                    if self.ui.selected_output_index >= self.domain.outputs.len() {
-                        self.ui.selected_output_index = 0;
-                    }
-                    self.fetch_package_details();
+                    self.ui.fetching_package_details = true;
+                    self.domain.package_info.clear();
+                    
+                    let flake_path = file.path.clone();
+                    let tx = self.tx.clone();
+
+                    std::thread::spawn(move || {
+                        let content = std::fs::read_to_string(&flake_path).unwrap_or_default();
+                        let lock_path = flake_path.parent().unwrap_or(std::path::Path::new(".")).join("flake.lock");
+                        let lock_content = std::fs::read_to_string(lock_path).ok();
+                        let inputs = extract_inputs(&content, lock_content.as_deref());
+                        
+                        let outputs = match fetch_outputs(
+                            flake_path.parent().unwrap_or(std::path::Path::new(".")),
+                        ) {
+                            Ok(outputs) => outputs,
+                            Err(e) => {
+                                crate::log_output("Nix Error", format!("Failed to fetch outputs: {}", e));
+                                Vec::new()
+                            }
+                        };
+                        
+                        let _ = tx.send(Action::SetContextData(inputs, outputs));
+                    });
                 }
             }
-            Action::FetchPackageDetails => {
+            Action::AddPackageInfo(name, info) => {
+                self.domain.package_info.insert(name, info);
+            }
+            Action::SetContextData(inputs, outputs) => {
+                self.domain.inputs = inputs;
+                self.domain.outputs = outputs;
+                if self.ui.selected_output_index >= self.domain.outputs.len() {
+                    self.ui.selected_output_index = 0;
+                }
                 self.fetch_package_details();
             }
             Action::StartShell(packages) => {
@@ -1047,9 +1166,6 @@ impl AppState {
                 self.shell_packages = packages;
                 self.ui.selected_index = 1;
                 self.should_quit = true;
-            }
-            Action::UpdateShellPackages(packages) => {
-                self.shell_packages = packages;
             }
             Action::RemovePackage(index) => {
                 if self.mode == Mode::Shell && index < self.shell_packages.len() {
@@ -1219,6 +1335,95 @@ impl AppState {
             }
             Action::UpdateNxvProgress(progress) => {
                 self.domain.nxv_update_progress = progress;
+            }
+            Action::ToggleHelp => {
+                self.ui.show_help = !self.ui.show_help;
+            }
+            Action::ToggleTemplates => {
+                self.ui.show_templates = !self.ui.show_templates;
+            }
+            Action::ApplyTemplate(template_name) => {
+                if self.mode == Mode::Flake && std::path::Path::new("flake.nix").exists() {
+                    self.ui.is_confirming_template_overwrite = true;
+                    self.ui.pending_template_name = Some(template_name);
+                    return;
+                }
+                self.apply_template_logic(template_name);
+            }
+            Action::ConfirmApplyTemplate => {
+                if let Some(template_name) = self.ui.pending_template_name.take() {
+                    self.apply_template_logic(template_name);
+                }
+                self.ui.is_confirming_template_overwrite = false;
+            }
+            Action::CancelApplyTemplate => {
+                self.ui.pending_template_name = None;
+                self.ui.is_confirming_template_overwrite = false;
+            }
+            Action::TogglePin(pkg_name) => {
+                if self.ui.pinned_packages.contains(&pkg_name) {
+                    self.ui.pinned_packages.remove(&pkg_name);
+                } else {
+                    self.ui.pinned_packages.insert(pkg_name);
+                }
+            }
+            Action::ToggleSaveShellTemplate => {
+                self.ui.is_saving_shell_template = !self.ui.is_saving_shell_template;
+                if self.ui.is_saving_shell_template {
+                    self.ui.new_template_filename = String::new();
+                    self.ui.new_template_description = String::new();
+                    self.ui.template_cursor = 0;
+                }
+            }
+            Action::NewTemplateChar(c) => {
+                if self.ui.template_cursor == 0 {
+                    self.ui.new_template_filename.push(c);
+                } else {
+                    self.ui.new_template_description.push(c);
+                }
+            }
+            Action::NewTemplateBackspace => {
+                if self.ui.template_cursor == 0 {
+                    self.ui.new_template_filename.pop();
+                } else {
+                    self.ui.new_template_description.pop();
+                }
+            }
+            Action::SaveShellTemplate => {
+                if let Some(config_dir) = dirs::config_dir() {
+                    let template_dir = config_dir.join("nui").join("templates");
+                    let mut filename = self.ui.new_template_filename.clone();
+                    if !filename.ends_with(".nix") {
+                        filename.push_str(".nix");
+                    }
+                    let template_path = template_dir.join(&filename);
+                    
+                    let description = &self.ui.new_template_description;
+                    let packages = &self.shell_packages;
+                    
+                    let mut flake_content = format!(
+                        "{{ \n  description = \"{}\";\n  inputs.nixpkgs.url = \"github:NixOS/nixpkgs/nixos-unstable\";\n  outputs = {{ self, nixpkgs }}: let system = \"x86_64-linux\"; pkgs = nixpkgs.legacyPackages.${{system}}; in {{ \n    devShells.${{system}}.default = pkgs.mkShell {{ \n      packages = [ ",
+                        description
+                    );
+                    
+                    for pkg in packages {
+                        let clean_pkg = pkg.split('#').last().unwrap_or(pkg).split('@').next().unwrap_or(pkg);
+                        flake_content.push_str(&format!("pkgs.{} ", clean_pkg));
+                    }
+                    
+                    flake_content.push_str("]; \n    }; \n  };\n}}");
+                    
+                    match std::fs::write(&template_path, flake_content) {
+                        Ok(_) => {
+                            crate::log_output("Success", format!("Saved shell as template: {}", filename));
+                            self.ui.is_saving_shell_template = false;
+                            self.ui.templates = load_templates();
+                        }
+                        Err(e) => {
+                            crate::log_output("Error", format!("Failed to save template: {}", e));
+                        }
+                    }
+                }
             }
         }
     }
@@ -1640,5 +1845,73 @@ impl AppState {
         self.domain
             .suggestions
             .update_filtered(&self.ui.new_input_name, &existing_urls);
+    }
+
+    fn apply_template_logic(&mut self, template_name: String) {
+        if let Some(config_dir) = dirs::config_dir() {
+            let template_path = config_dir.join("nui").join("templates").join(&template_name);
+            crate::log_output("Debug", format!("Applying template: {} (Mode: {:?})", template_name, self.mode));
+            
+            if template_path.exists() {
+                if self.mode == Mode::Shell {
+                    match std::fs::read_to_string(&template_path) {
+                        Ok(content) => {
+                            let pkgs = extract_packages_from_template(&content);
+                            crate::log_output("Debug", format!("Extracted {} packages from template: {:?}", pkgs.len(), pkgs));
+                            
+                            for pkg in pkgs {
+                                let name = pkg.clone();
+                                if !self.shell_packages.contains(&name) {
+                                    crate::log_output("Debug", format!("Adding to shell: {}", name));
+                                    self.shell_packages.push(name.clone());
+                                    self.fetch_shell_package_metadata(name);
+                                }
+                            }
+                            crate::log_output("Success", format!("Added packages from template: {}", template_name));
+                            self.ui.show_templates = false;
+                        }
+                        Err(e) => {
+                            crate::log_output("Error", format!("Failed to read template: {}", e));
+                        }
+                    }
+                } else {
+                    match std::fs::copy(&template_path, "flake.nix") {
+                        Ok(_) => {
+                            crate::log_output("Success", format!("Applied template: {}", template_name));
+                            self.ui.show_templates = false;
+                            self.update(Action::RefreshContext);
+                        }
+                        Err(e) => {
+                            crate::log_output("Error", format!("Failed to apply template: {}", e));
+                        }
+                    }
+                }
+            } else {
+                crate::log_output("Error", format!("Template not found: {:?}", template_path));
+            }
+        }
+    }
+
+    fn fetch_shell_package_metadata(&mut self, pkg_name: String) {
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let output = std::process::Command::new("nix-env")
+                .args(["-qa", &pkg_name, "--json"])
+                .output();
+            
+            if let Ok(output) = output {
+                if output.status.success() {
+                    if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+                        if let Some(obj) = json.as_object() {
+                            if let Some(meta) = obj.values().next() {
+                                let version = meta.get("version").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
+                                let description = meta.get("meta").and_then(|m| m.get("description")).and_then(|d| d.as_str()).unwrap_or("").to_string();
+                                let _ = tx.send(Action::AddPackageInfo(pkg_name, (description, version, false, String::new())));
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 }

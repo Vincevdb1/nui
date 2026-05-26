@@ -3,11 +3,13 @@ use crate::nix::Input;
 use crate::state::Mode;
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect, Margin},
+    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
+
+use crate::components::popups::centered_rect;
 
 use std::collections::HashMap;
 
@@ -189,11 +191,6 @@ fn render_package_search(
                 ),
                 Span::raw(" | "),
                 Span::styled(
-                    format!("{:8}", "Hash"),
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" | "),
-                Span::styled(
                     "Description",
                     Style::default().add_modifier(Modifier::BOLD),
                 ),
@@ -227,14 +224,6 @@ fn render_package_search(
                     spans.push(Span::styled(
                         format!("{:width$}", version, width = max_version_width),
                         Style::default().fg(Color::Green),
-                    ));
-
-                    spans.push(Span::raw(" | "));
-                    let hash = sys_hash.unwrap_or(res.hash.as_deref().unwrap_or("-------"));
-                    let short_hash = if hash.len() > 7 { &hash[..7] } else { hash };
-                    spans.push(Span::styled(
-                        format!("{:8}", short_hash),
-                        if sys_hash.is_some() { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::Cyan) },
                     ));
 
                     spans.push(Span::raw(" | "));
@@ -482,11 +471,10 @@ fn render_version_selection(
             if let Some(cv) = current_versions.iter().find(|v| v.channel == channel_name) {
                 let version = cv.locked_version.as_ref().unwrap_or(&cv.version).clone();
                 let rev = input.rev.as_deref().unwrap_or("-------");
-                let short_rev = if rev.len() > 10 { &rev[..10] } else { rev };
                 
                 all_items.push((
                     version.clone(),
-                    short_rev.to_string(),
+                    rev.to_string(),
                     false, // Inputs don't have unfree marker here for simplicity, or we could fetch it
                     Some((input.name.clone(), channel_name)),
                     false, // is_system
@@ -497,10 +485,9 @@ fn render_version_selection(
 
     // 2. Add Historical Versions
     for v in versions {
-        let hash = if v.hash.len() > 10 { &v.hash[..10] } else { &v.hash };
         all_items.push((
             v.version.clone(),
-            hash.to_string(),
+            v.hash.clone(),
             v.is_unfree,
             None,
             v.is_system, // is_system
@@ -591,7 +578,7 @@ fn render_version_selection(
                     unfree_marker,
                     Span::styled(format!("{:30}", display_name), style),
                     Span::raw(" | "),
-                    Span::styled(format!("{:10}", hash), Style::default().fg(Color::Cyan)),
+                    Span::styled(hash, Style::default().fg(Color::Cyan)),
                 ];
                 ListItem::new(Line::from(spans))
             })
@@ -754,26 +741,6 @@ pub fn render_details(frame: &mut Frame, result: &SearchResult) {
             .alignment(Alignment::Center),
         chunks[5],
     );
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
 
 fn get_channel_color(channel: &str) -> Color {

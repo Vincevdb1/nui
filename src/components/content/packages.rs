@@ -68,7 +68,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         Cell::from("─".repeat(100)),
     ]));
 
-    for pkg in all_packages {
+    for pkg in &all_packages {
         let is_selected = app.ui.selected_packages.contains(&pkg.name);
         let has_any_selected = !app.ui.selected_packages.is_empty();
         
@@ -84,6 +84,12 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
 
         let unfree_marker = if pkg.is_unfree {
             Span::styled(" $", Style::default().fg(Color::Green))
+        } else {
+            Span::raw("")
+        };
+
+        let pin_marker = if app.ui.pinned_packages.contains(&pkg.name) {
+            Span::styled(" 󰐃", Style::default().fg(Color::Cyan))
         } else {
             Span::raw("")
         };
@@ -115,6 +121,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
             Cell::from(Line::from(vec![
                 Span::raw(format!(" {}", pkg.name)),
                 unfree_marker,
+                pin_marker,
             ])),
             Cell::from("│"),
             Cell::from(version_line),
@@ -123,10 +130,20 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         ]));
     }
 
+    let max_name_len = all_packages.iter()
+        .map(|p| p.name.len() + (if p.is_unfree { 2 } else { 0 }))
+        .max()
+        .unwrap_or(20) as u16;
+
+    let viewport_width = area.width;
+    let min_name_width = (viewport_width as f32 * 0.2) as u16;
+    let max_name_width = (viewport_width as f32 * 0.5) as u16;
+    let name_column_width = max_name_len.clamp(min_name_width, max_name_width);
+
     let rows_count = rows.len();
     let widths = [
         Constraint::Length(3),
-        Constraint::Percentage(20),
+        Constraint::Length(name_column_width),
         Constraint::Length(1),
         Constraint::Percentage(25),
         Constraint::Length(1),

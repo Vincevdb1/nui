@@ -1,124 +1,66 @@
-pub mod action;
+use color_eyre::eyre::Result;
+use ratatui::crossterm::event::{self, Event, KeyCode};
+
+mod action;
 mod app;
-pub mod components;
+mod components;
 mod context;
 mod nix;
-pub mod state;
+mod state;
 mod tui;
 mod ui;
 
-pub use components::command_log::{command_log, log_action, log_output};
+use action::Action;
+use app::App;
 
-use crate::action::Action;
-use crate::app::App;
-use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode};
+pub use components::command_log::{command_log, log_action, log_output};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
-
     let args: Vec<String> = std::env::args().collect();
-    
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
-        println!("nui - A Nix TUI for managing flakes and shells\n");
-        println!("USAGE:");
-        println!("    nui [COMMAND] [OPTIONS]\n");
-        println!("COMMANDS:");
-        println!("    shell                  Start in shell mode\n");
-        println!("OPTIONS:");
-        println!("    -h, --help             Print help information");
-        println!("    -V, --version          Print version information");
-        return Ok(());
-    }
 
     if args.iter().any(|arg| arg == "--version" || arg == "-V") {
         println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
 
-    let (mode, shell_packages) = if args.len() > 1 && args[1] == "shell" {
-        (crate::state::Mode::Shell, Vec::new())
-    } else if !std::path::Path::new("flake.nix").exists() {
+    let (mode, shell_packages) = if args.iter().any(|arg| arg == "shell") {
         (crate::state::Mode::Shell, Vec::new())
     } else {
         (crate::state::Mode::Flake, Vec::new())
     };
 
+    if let Some(config_dir) = dirs::config_dir() {
+        let template_dir = config_dir.join("nui").join("templates");
+        if !template_dir.exists() {
+            let _ = std::fs::create_dir_all(&template_dir);
+        }
+    }
+
     let mut terminal = tui::init()?;
-    let mut app = App::new(mode, shell_packages);
+    let mut app = App::new(mode.clone(), shell_packages);
+
+    if !std::path::Path::new("flake.nix").exists() && mode == crate::state::Mode::Flake {
+        app.ui.show_templates = true;
+        if !app.ui.templates.is_empty() {
+            app.ui.template_list_state.select(Some(2));
+        }
+    }
 
     let result = run(&mut terminal, &mut app);
 
     tui::restore()?;
 
-    if let Ok(Some(packages)) = result {
-        if !packages.is_empty() {
-            let mut args = vec!["shell".to_string()];
-            for pkg in &packages {
-                let pkg_base = if pkg.contains('@') {
-                    pkg.rsplit_once('@').map(|(base, _)| base).unwrap_or(pkg)
-                } else {
-                    pkg
-                };
-
-                if pkg_base.starts_with("system/") {
-                    if let Some((_, suffix)) = pkg_base.split_once('/') {
-                        if let Some((_, pkg_name)) = suffix.split_once('#') {
-                            let path = std::process::Command::new("nix")
-                                .args(["eval", "--raw", "--impure", "--expr", "(import <nixpkgs> {}).path"])
-                                .output()
-                                .ok()
-                                .and_then(|o| if o.status.success() {
-                                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
-                                } else { None })
-                                .unwrap_or_else(|| ".".to_string());
-                            args.push(format!("path:{}#{}", path, pkg_name));
-                        }
-                    }
-                } else if pkg_base.starts_with("nixpkgs/") {
-                    args.push(format!("github:NixOS/nixpkgs/{}", &pkg_base[8..]));
-                } else if pkg_base.contains('#') {
-                    args.push(crate::nix::flake::normalize_flake_ref(pkg_base));
-                } else {
-                    args.push(format!("github:NixOS/nixpkgs/nixpkgs-unstable#{}", pkg_base));
-                }
-            }
-            let env_name = if packages.is_empty() {
-                "nui-shell-env".to_string()
-            } else {
-                let shortened_packages: Vec<String> = packages.iter().map(|pkg| {
-                    let mut display_pkg = pkg.clone();
-                    if let Some(hash_idx) = display_pkg.find("nixpkgs/") {
-                        if let Some(hash_end) = display_pkg[hash_idx + 8..].find('#') {
-                            let hash = &display_pkg[hash_idx + 8..hash_idx + 8 + hash_end];
-                            if hash.len() > 7 {
-                                display_pkg = format!("{}{}{}", &display_pkg[..hash_idx + 8], &hash[..7], &display_pkg[hash_idx + 8 + hash_end..]);
-                            }
-                        }
-                    } else if let Some(hash_idx) = display_pkg.find("system/") {
-                        if let Some(hash_end) = display_pkg[hash_idx + 7..].find('#') {
-                            let hash = &display_pkg[hash_idx + 7..hash_idx + 7 + hash_end];
-                            let short_hash = if hash.len() > 7 { &hash[..7] } else { hash };
-                            display_pkg = format!("{}#{}", short_hash, &display_pkg[hash_idx + 7 + hash_end + 1..]);
-                        }
-                    }
-                    display_pkg
-                }).collect();
-                format!("nui-shell:{}-env", shortened_packages.join(":"))
-            };
-
-            args.push("--impure".to_string());
-
+    if let Ok(Some(pkgs)) = result {
+        if !pkgs.is_empty() {
+            use color_eyre::owo_colors::OwoColorize;
+            println!("Opening shell with packages: {}", pkgs.join(", ").cyan());
             let mut cmd = std::process::Command::new("nix");
-            cmd.args(args)
-                .env("name", env_name)
-                .env("NIXPKGS_ALLOW_UNFREE", "1");
-            
-            if let Ok(nix_path) = std::env::var("NIX_PATH") {
-                cmd.env("NIX_PATH", nix_path);
+            cmd.arg("shell");
+            for pkg in pkgs {
+                cmd.arg(pkg);
             }
-
-            cmd.spawn()?.wait()?;
+            cmd.status()?;
         }
     }
 
@@ -145,10 +87,56 @@ fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<Option<Vec<String>>> {
 
 fn map_event(app: &App, event: Event) -> Option<Action> {
     if let Event::Key(key) = event {
+        if app.ui.show_help {
+            return match key.code {
+                KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => Some(Action::ToggleHelp),
+                _ => None,
+            };
+        }
+
+        if app.ui.show_templates {
+            return match key.code {
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('t') => Some(Action::ToggleTemplates),
+                KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveTemplateSelectionDown),
+                KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveTemplateSelectionUp),
+                KeyCode::Enter => {
+                    if let Some(i) = app.ui.template_list_state.selected() {
+                        if i >= 2 {
+                            if let Some((template_name, _)) = app.ui.templates.get(i - 2) {
+                                return Some(Action::ApplyTemplate(template_name.clone()));
+                            }
+                        }
+                    }
+                    Some(Action::ToggleTemplates)
+                }
+                _ => None,
+            };
+        }
+
+        if app.ui.is_saving_shell_template {
+            return match key.code {
+                KeyCode::Esc => Some(Action::ToggleSaveShellTemplate),
+                KeyCode::Tab => Some(Action::NextInputField),
+                KeyCode::BackTab => Some(Action::PreviousInputField),
+                KeyCode::Char(c) => Some(Action::NewTemplateChar(c)),
+                KeyCode::Backspace => Some(Action::NewTemplateBackspace),
+                KeyCode::Enter => Some(Action::SaveShellTemplate),
+                _ => None,
+            };
+        }
+
+        if app.ui.is_confirming_template_overwrite {
+            return match key.code {
+                KeyCode::Char('y') | KeyCode::Enter => Some(Action::ConfirmApplyTemplate),
+                KeyCode::Char('n') | KeyCode::Esc => Some(Action::CancelApplyTemplate),
+                _ => None,
+            };
+        }
+
         if app.ui.is_adding_package {
             if app.ui.is_showing_package_details {
                 return match key.code {
-                    KeyCode::Esc | KeyCode::Tab => {
+                    KeyCode::Esc | KeyCode::Tab | KeyCode::Char('q') => {
                         Some(Action::TogglePackageDetails)
                     }
                     _ => None,
@@ -231,7 +219,7 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
 
         if app.ui.is_adding_input {
             return match key.code {
-                KeyCode::Esc => Some(Action::ClosePopup),
+                KeyCode::Esc | KeyCode::Char('q') => Some(Action::ClosePopup),
                 KeyCode::Tab => Some(Action::NextInputField),
                 KeyCode::BackTab => Some(Action::PreviousInputField),
                 KeyCode::Down => {
@@ -261,8 +249,17 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
             };
         }
 
+        if app.ui.is_showing_package_details {
+            return match key.code {
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('i') => Some(Action::TogglePackageDetails),
+                _ => None,
+            };
+        }
+
         return match key.code {
             KeyCode::Char('q') => Some(Action::Quit),
+            KeyCode::Char('t') => Some(Action::ToggleTemplates),
+            KeyCode::Char('T') if app.mode == crate::state::Mode::Shell => Some(Action::ToggleSaveShellTemplate),
             KeyCode::Tab => Some(Action::NextTab),
             KeyCode::BackTab => Some(Action::PreviousTab),
             KeyCode::Char('1') => Some(Action::SelectTab(1)),
@@ -360,7 +357,30 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
                 None
             }
             KeyCode::Char('m') => Some(Action::SwitchMode),
-            KeyCode::Char('i') if app.ui.selected_index == 2 => Some(Action::TogglePackageDetails),
+            KeyCode::Char('?') => Some(Action::ToggleHelp),
+            KeyCode::Char('p') if app.ui.selected_index == 2 || (app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1) => {
+                if app.mode == crate::state::Mode::Shell {
+                    if let Some(i) = app.ui.shell_package_list_state.selected() {
+                        if i > 0 {
+                            if let Some(pkg_name) = app.shell_packages.get(i - 1) {
+                                return Some(Action::TogglePin(pkg_name.clone()));
+                            }
+                        }
+                    }
+                } else {
+                    if let Some(i) = app.ui.package_table_state.selected() {
+                        if i > 0 {
+                            let mut pkgs: Vec<_> = app.domain.package_info.keys().collect();
+                            pkgs.sort();
+                            if let Some(pkg_name) = pkgs.get(i - 1) {
+                                return Some(Action::TogglePin(pkg_name.to_string()));
+                            }
+                        }
+                    }
+                }
+                None
+            }
+            KeyCode::Char('i') if app.ui.selected_index == 2 || (app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1) => Some(Action::TogglePackageDetails),
             KeyCode::Char('j') if app.ui.selected_index == 2 => Some(Action::MovePackageSelectionDown),
             KeyCode::Char('k') if app.ui.selected_index == 2 => Some(Action::MovePackageSelectionUp),
             KeyCode::Char('j') if app.ui.selected_index == 3 => Some(Action::MoveInputSelectionDown),

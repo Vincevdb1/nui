@@ -42,7 +42,6 @@
           wrapProgram $out/bin/nui \
             --prefix PATH : ${
               pkgs.lib.makeBinPath [
-                pkgs.nix
                 pkgs.nix-search-cli
                 nxv.packages.${system}.default
               ]
