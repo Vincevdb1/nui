@@ -660,10 +660,59 @@ pub fn handle_nix_action(state: &mut AppState, _context: &Context, action: Actio
             state.ui.is_confirming_template_overwrite = false;
         }
         Action::TogglePin(pkg_name) => {
-            if state.ui.pinned_packages.contains(&pkg_name) {
-                state.ui.pinned_packages.remove(&pkg_name);
-            } else {
-                state.ui.pinned_packages.insert(pkg_name);
+            if state.mode == Mode::Shell {
+                if state.ui.pinned_packages.contains(&pkg_name) {
+                    state.ui.pinned_packages.remove(&pkg_name);
+                } else {
+                    state.ui.pinned_packages.insert(pkg_name);
+                }
+            } else if let Some(file) = state.domain.nix_files.get(state.ui.selected_nix_file_index) {
+                if let Some(output) = state.domain.outputs.get(state.ui.selected_output_index) {
+                    let mut parts = output.path.split('.');
+                    let system = parts.next().unwrap_or("x86_64-linux");
+                    let shell_name = parts.next().unwrap_or("default");
+
+                    if pkg_name.starts_with("inputs.") {
+                        // Unpin
+                        match crate::nix::flake::unpin_package(
+                            &file.path,
+                            system,
+                            shell_name,
+                            &pkg_name,
+                        ) {
+                            Ok(_) => {
+                                crate::log_output("Success", format!("Unpinned package {}", pkg_name));
+                                let _ = state.tx.send(Action::RefreshContext);
+                            }
+                            Err(e) => {
+                                crate::log_output(
+                                    "Error",
+                                    format!("Failed to unpin {}: {}", pkg_name, e),
+                                );
+                            }
+                        }
+                    } else {
+                        // Pin
+                        match crate::nix::flake::pin_package(
+                            &file.path,
+                            system,
+                            shell_name,
+                            &pkg_name,
+                            &state.domain.inputs,
+                        ) {
+                            Ok(_) => {
+                                crate::log_output("Success", format!("Pinned package {}", pkg_name));
+                                let _ = state.tx.send(Action::RefreshContext);
+                            }
+                            Err(e) => {
+                                crate::log_output(
+                                    "Error",
+                                    format!("Failed to pin {}: {}", pkg_name, e),
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
         Action::SaveShellTemplate => {

@@ -101,7 +101,7 @@ pub fn render(props: &mut PackagesProps, frame: &mut Frame, area: Rect) {
             Span::raw("")
         };
 
-        let pin_marker = if props.pinned_packages.contains(&pkg.name) {
+        let pin_marker = if props.pinned_packages.contains(&pkg.name) || pkg.name.starts_with("inputs.") {
             Span::styled(" 󰐃", Style::default().fg(Color::Cyan))
         } else {
             Span::raw("")
