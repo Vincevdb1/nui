@@ -352,6 +352,27 @@ fn map_event(app: &App, event: Event) -> Option<Action> {
             KeyCode::Char('a') if app.ui.selected_index == 2 || (app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1) => Some(Action::OpenAddPackage),
             KeyCode::Char('a') if app.ui.selected_index == 3 => Some(Action::OpenAddInput),
             KeyCode::Char('s') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => Some(Action::StartShell(app.shell_packages.clone())),
+            KeyCode::Char('v') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => {
+                if let Some(i) = app.ui.shell_package_list_state.selected() {
+                    if i > 0 {
+                        if let Some(pkg_id) = app.shell_packages.get(i - 1) {
+                            let pkg_name = if pkg_id.contains('#') {
+                                pkg_id.split('#').last().unwrap_or(pkg_id)
+                                      .split('@').next().unwrap_or(pkg_id)
+                                      .to_string()
+                            } else if pkg_id.contains('@') {
+                                pkg_id.split('@').next().unwrap_or(pkg_id).to_string()
+                            } else {
+                                pkg_id.clone()
+                            };
+
+                            return Some(Action::FetchShellPackageVersions(i - 1, pkg_name));
+                        }
+                    }
+                }
+                None
+            }
+
             KeyCode::Char(' ') if app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1 => {
                 if let Some(i) = app.ui.shell_package_list_state.selected() {
                     if i > 0 {

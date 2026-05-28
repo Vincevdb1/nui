@@ -32,6 +32,7 @@ pub struct AddPackageProps<'a> {
     pub mode: Mode,
     pub system_nixpkgs_version: Option<&'a String>,
     pub system_nixpkgs_hash: Option<&'a String>,
+    pub is_swapping: bool,
 }
 
 pub fn render(
@@ -41,8 +42,14 @@ pub fn render(
     let area = centered_rect(80, 70, frame.area());
     frame.render_widget(Clear, area);
 
+    let title = if props.is_swapping {
+        " [ Change Version ] "
+    } else {
+        " [ Add Package ] "
+    };
+
     let block = Block::default()
-        .title(" [ Add Package ] ")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Yellow));
     frame.render_widget(block, area);

@@ -190,6 +190,7 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
             state.ui.is_adding_package = false;
             state.ui.is_adding_input = false;
             state.ui.is_selecting_version = false;
+            state.ui.editing_shell_package_index = None;
         }
         Action::PackageSearchChar(c) => {
             state.ui.package_search_query.push(c);
@@ -211,7 +212,13 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
             crate::ui::list::ListWrapper::new(&mut state.ui.package_search_state, count).previous();
         }
         Action::BackToPackageSearch => {
-            state.ui.is_selecting_version = false;
+            if state.ui.editing_shell_package_index.is_some() {
+                state.ui.is_adding_package = false;
+                state.ui.is_selecting_version = false;
+                state.ui.editing_shell_package_index = None;
+            } else {
+                state.ui.is_selecting_version = false;
+            }
         }
         Action::MoveVersionSelectionDown => {
             let inputs_len = if state.mode == crate::state::Mode::Flake {

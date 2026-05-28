@@ -695,11 +695,17 @@ impl AppState {
                             crate::log_output("Debug", format!("Extracted {} packages from template: {:?}", pkgs.len(), pkgs));
                             
                             for pkg in pkgs {
-                                let name = pkg.clone();
-                                if !self.shell_packages.contains(&name) {
-                                    crate::log_output("Debug", format!("Adding to shell: {}", name));
-                                    self.shell_packages.push(name.clone());
-                                    self.fetch_shell_package_metadata(name);
+                                let attribute = pkg.clone();
+                                let pkg_to_add = if let Some(hash) = self.domain.system_nixpkgs_hash.as_ref() {
+                                    format!("system/{}#{}", hash, attribute)
+                                } else {
+                                    attribute.clone()
+                                };
+
+                                if !self.shell_packages.contains(&pkg_to_add) {
+                                    crate::log_output("Debug", format!("Adding to shell: {}", pkg_to_add));
+                                    self.shell_packages.push(pkg_to_add.clone());
+                                    self.fetch_shell_package_metadata(pkg_to_add);
                                 }
                             }
                             crate::log_output("Success", format!("Added packages from template: {}", template_name));
@@ -727,8 +733,20 @@ impl AppState {
         }
     }
 
-    pub fn fetch_shell_package_metadata(&mut self, pkg_name: String) {
+    pub fn fetch_shell_package_metadata(&mut self, pkg_id: String) {
         let tx = self.tx.clone();
+        
+        // Extract the clean attribute name for nix-env -qa
+        let pkg_name = if pkg_id.contains('#') {
+            pkg_id.split('#').last().unwrap_or(&pkg_id)
+                  .split('@').next().unwrap_or(&pkg_id)
+                  .to_string()
+        } else if pkg_id.contains('@') {
+            pkg_id.split('@').next().unwrap_or(&pkg_id).to_string()
+        } else {
+            pkg_id.clone()
+        };
+
         std::thread::spawn(move || {
             let output = std::process::Command::new("nix-env")
                 .args(["-qa", &pkg_name, "--json"])
@@ -741,7 +759,7 @@ impl AppState {
                             if let Some(meta) = obj.values().next() {
                                 let version = meta.get("version").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
                                 let description = meta.get("meta").and_then(|m| m.get("description")).and_then(|d| d.as_str()).unwrap_or("").to_string();
-                                let _ = tx.send(Action::AddPackageInfo(pkg_name, (description, version, false, String::new())));
+                                let _ = tx.send(Action::AddPackageInfo(pkg_id, (description, version, false, String::new())));
                             }
                         }
                     }

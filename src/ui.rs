@@ -99,7 +99,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     }
 
     let footer_text = if app.mode == crate::state::Mode::Shell {
-        "a: Add | d: Remove | i: Info | p: Pin | s: Start Shell | m: Mode | t: Templates | j/k: Select | Space: Multi-select | ?: Help | q: Quit"
+        "a: Add | d: Remove | v: Version | i: Info | p: Pin | s: Start Shell | m: Mode | t: Templates | j/k: Select | Space: Multi-select | ?: Help | q: Quit"
     } else {
         match app.ui.selected_index {
             1 => "Tab: Switch focus | m: Switch Mode | t: Templates | 1-5: Select tab | ?: Help | q: Quit",
@@ -180,6 +180,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                 mode: app.mode.clone(),
                 system_nixpkgs_version: app.domain.system_nixpkgs_version.as_ref(),
                 system_nixpkgs_hash: app.domain.system_nixpkgs_hash.as_ref(),
+                is_swapping: app.ui.editing_shell_package_index.is_some(),
             },
         );
     }

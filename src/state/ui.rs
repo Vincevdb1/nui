@@ -48,6 +48,7 @@ pub struct UiState {
     pub template_cursor: usize,
     pub template_list_state: ratatui::widgets::TableState,
     pub templates: Vec<(String, String)>,
+    pub editing_shell_package_index: Option<usize>,
 }
 
 impl Default for UiState {
@@ -97,6 +98,7 @@ impl Default for UiState {
             template_cursor: 0,
             template_list_state: ratatui::widgets::TableState::default(),
             templates: Vec::new(),
+            editing_shell_package_index: None,
         }
     }
 }

@@ -56,6 +56,7 @@ pub fn render(frame: &mut Frame) {
         ("j/k", "Navigate list / Scroll"),
         ("Enter", "Select / Toggle / Add"),
         ("Esc", "Close popup / Back"),
+        ("v", "Change package version (Shell Mode)"),
         ("p", "Pin/Unpin package"),
         ("s", "Search/Filter (in Add Package)"),
         ("a", "Add Package/Input"),

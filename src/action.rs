@@ -55,6 +55,7 @@ pub enum Action {
     // Context / State Refresh
     RefreshContext,
     FetchVersions(String),
+    FetchShellPackageVersions(usize, String),
 
     // Mode switching
     SwitchMode,

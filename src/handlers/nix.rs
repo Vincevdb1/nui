@@ -535,6 +535,30 @@ pub fn handle_nix_action(state: &mut AppState, _context: &Context, action: Actio
                 let _ = tx.send(Action::SetVersions(res));
             });
         }
+        Action::FetchShellPackageVersions(index, pkg) => {
+            state.ui.is_adding_package = true;
+            state.ui.editing_shell_package_index = Some(index);
+            state.ui.is_selecting_version = true;
+            state.ui.is_fetching_versions = true;
+            state.ui.version_fetch_error = None;
+            state.ui.selected_package_name = Some(pkg.clone());
+            
+            if let Some(pkg_id) = state.shell_packages.get(index) {
+                if let Some((desc, _, unfree, _)) = state.domain.package_info.get(pkg_id) {
+                    state.ui.selected_package_description = Some(desc.clone());
+                    state.ui.selected_package_is_unfree = *unfree;
+                }
+            }
+
+            state.domain.package_versions.clear();
+            state.ui.version_list_state.select(None);
+
+            let tx = state.tx.clone();
+            std::thread::spawn(move || {
+                let res = domain::fetch_package_versions(&pkg);
+                let _ = tx.send(Action::SetVersions(res));
+            });
+        }
         Action::SetVersions(res) => {
             state.ui.is_fetching_versions = false;
             match res {
@@ -587,7 +611,23 @@ pub fn handle_nix_action(state: &mut AppState, _context: &Context, action: Actio
                     } else {
                         format!("nixpkgs/{}#{}@{}", version_info.hash, pkg_name, version_info.version)
                     };
-                    if !state.shell_packages.contains(&pinned_pkg) {
+
+                    if let Some(index) = state.ui.editing_shell_package_index.take() {
+                        if index < state.shell_packages.len() {
+                            let old_pkg_id = state.shell_packages[index].clone();
+                            state.shell_packages[index] = pinned_pkg.clone();
+                            state.domain.package_info.remove(&old_pkg_id);
+                            state.domain.package_info.insert(
+                                pinned_pkg,
+                                (
+                                    state.ui.selected_package_description.clone().unwrap_or_default(),
+                                    version_info.version.clone(),
+                                    state.ui.selected_package_is_unfree,
+                                    String::new(),
+                                ),
+                            );
+                        }
+                    } else if !state.shell_packages.contains(&pinned_pkg) {
                         state.shell_packages.push(pinned_pkg.clone());
                         state.domain.package_info.insert(
                             pinned_pkg,
@@ -606,6 +646,7 @@ pub fn handle_nix_action(state: &mut AppState, _context: &Context, action: Actio
                 state.ui.selected_package_description = None;
                 state.ui.package_search_query = String::new();
                 state.domain.package_search_results = Vec::new();
+                state.ui.editing_shell_package_index = None;
                 return;
             }
 
