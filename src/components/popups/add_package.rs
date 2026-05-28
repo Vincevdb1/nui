@@ -506,7 +506,7 @@ fn render_version_selection(
     }
 
     // 4. Sort by version (descending)
-    all_items.sort_by(|a, b| b.0.cmp(&a.0));
+    all_items.sort_by(|a, b| compare_versions(&b.0, &a.0));
 
     if all_items.is_empty() && !is_fetching {
         let block = Block::default().title(list_title).borders(Borders::ALL);
@@ -775,4 +775,29 @@ fn get_channel_color(channel: &str) -> Color {
         Color::LightCyan,
     ];
     colors[(hash as usize) % colors.len()]
+}
+
+fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    let a_parts: Vec<&str> = a.split(|c: char| !c.is_alphanumeric()).collect();
+    let b_parts: Vec<&str> = b.split(|c: char| !c.is_alphanumeric()).collect();
+
+    for (a_p, b_p) in a_parts.iter().zip(b_parts.iter()) {
+        let a_num = a_p.parse::<u64>();
+        let b_num = b_p.parse::<u64>();
+
+        match (a_num, b_num) {
+            (Ok(an), Ok(bn)) => {
+                if an != bn {
+                    return an.cmp(&bn);
+                }
+            }
+            _ => {
+                if a_p != b_p {
+                    return a_p.cmp(b_p);
+                }
+            }
+        }
+    }
+
+    a_parts.len().cmp(&b_parts.len())
 }
