@@ -199,35 +199,48 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                 for p in &app.shell_packages {
                     let mut name = p.clone();
                     let mut version = "Unknown".to_string();
+                    let mut hash = None;
                     if p.contains('@') {
                         if let Some((rest, v)) = p.rsplit_once('@') {
                             version = v.to_string();
                             if (rest.starts_with("nixpkgs/") || rest.starts_with("system/")) && rest.contains('#') {
-                                if let Some((_, suffix)) = rest.split_once('#') {
+                                if let Some((prefix, suffix)) = rest.split_once('#') {
                                     name = suffix.to_string();
+                                    if let Some((_, h)) = prefix.split_once('/') {
+                                        hash = Some(h.to_string());
+                                    }
                                 }
                             } else {
                                 name = rest.to_string();
                             }
                         }
                     } else if (p.starts_with("nixpkgs/") || p.starts_with("system/")) && p.contains('#') {
-                        if let Some((_, suffix)) = p.split_once('#') {
+                        if let Some((prefix, suffix)) = p.split_once('#') {
                             name = suffix.to_string();
+                            if let Some((_, h)) = prefix.split_once('/') {
+                                hash = Some(h.to_string());
+                            }
                         }
                     }
 
+                    let (description, is_unfree) = if let Some((desc, _, unfree, _)) = app.domain.package_info.get(p) {
+                        (desc.clone(), *unfree)
+                    } else {
+                        ("".to_string(), false)
+                    };
+
                     all_packages.push(crate::state::domain::SearchResult {
                         name: name.clone(),
-                        description: "".to_string(),
+                        description,
                         versions: vec![crate::state::domain::ChannelVersion {
                             version: version.clone(),
                             channel: "shell".to_string(),
                             locked_version: None,
                         }],
                         platforms: Vec::new(),
-                        is_unfree: false,
+                        is_unfree,
                         source_input: None,
-                        hash: None,
+                        hash,
                     });
                 }
             } else {

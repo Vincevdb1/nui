@@ -66,32 +66,32 @@ pub fn render(props: &mut ShellProps, frame: &mut Frame, area: Rect) {
         let mut hash = "-------".to_string();
         let mut description = String::new();
 
+        if p.contains('@') {
+            if let Some((rest, v)) = p.rsplit_once('@') {
+                version = v.to_string();
+                if (rest.starts_with("nixpkgs/") || rest.starts_with("system/")) && rest.contains('#') {
+                    if let Some((prefix, suffix)) = rest.split_once('#') {
+                        display_name = suffix.to_string();
+                        if let Some((_, h)) = prefix.split_once('/') {
+                            hash = h.to_string();
+                        }
+                    }
+                } else {
+                    display_name = rest.to_string();
+                }
+            }
+        } else if (p.starts_with("nixpkgs/") || p.starts_with("system/")) && p.contains('#') {
+            if let Some((prefix, suffix)) = p.split_once('#') {
+                display_name = suffix.to_string();
+                if let Some((_, h)) = prefix.split_once('/') {
+                    hash = h.to_string();
+                }
+            }
+        }
+
         if let Some((desc, ver, _, _)) = props.package_info.get(p) {
             version = ver.clone();
             description = desc.clone();
-        } else {
-            if p.contains('@') {
-                if let Some((rest, v)) = p.rsplit_once('@') {
-                    version = v.to_string();
-                    if (rest.starts_with("nixpkgs/") || rest.starts_with("system/")) && rest.contains('#') {
-                        if let Some((prefix, suffix)) = rest.split_once('#') {
-                            display_name = suffix.to_string();
-                            if let Some((_, h)) = prefix.split_once('/') {
-                                hash = h.to_string();
-                            }
-                        }
-                    } else {
-                        display_name = rest.to_string();
-                    }
-                }
-            } else if (p.starts_with("nixpkgs/") || p.starts_with("system/")) && p.contains('#') {
-                if let Some((prefix, suffix)) = p.split_once('#') {
-                    display_name = suffix.to_string();
-                    if let Some((_, h)) = prefix.split_once('/') {
-                        hash = h.to_string();
-                    }
-                }
-            }
         }
 
         rows.push(Row::new(vec![

@@ -140,6 +140,8 @@ pub fn handle_nix_action(state: &mut AppState, _context: &Context, action: Actio
             if let Some(i) = state.ui.package_search_state.selected() {
                 if let Some(result) = state.domain.package_search_results.get(i) {
                     let package_name = result.name.clone();
+                    state.ui.selected_package_description = Some(result.description.clone());
+                    state.ui.selected_package_is_unfree = result.is_unfree;
                     state.update(Action::FetchVersions(package_name));
                 }
             }
@@ -159,9 +161,15 @@ pub fn handle_nix_action(state: &mut AppState, _context: &Context, action: Actio
                         };
 
                         if !state.shell_packages.contains(&pkg_to_add) {
-                            state.shell_packages.push(pkg_to_add);
+                            state.shell_packages.push(pkg_to_add.clone());
+                            state.domain.package_info.insert(
+                                pkg_to_add,
+                                (result.description.clone(), version, result.is_unfree, String::new()),
+                            );
                         }
                         state.ui.is_adding_package = false;
+                        state.ui.package_search_query = String::new();
+                        state.domain.package_search_results = Vec::new();
                     } else {
                         if let Some(file) =
                             state.domain.nix_files.get(state.ui.selected_nix_file_index)
@@ -474,7 +482,8 @@ pub fn handle_nix_action(state: &mut AppState, _context: &Context, action: Actio
         }
         Action::RemovePackage(index) => {
             if state.mode == Mode::Shell && index < state.shell_packages.len() {
-                state.shell_packages.remove(index);
+                let pkg = state.shell_packages.remove(index);
+                state.domain.package_info.remove(&pkg);
                 if state.shell_packages.is_empty() {
                     state.ui.shell_package_list_state.select(None);
                 } else {
@@ -493,7 +502,8 @@ pub fn handle_nix_action(state: &mut AppState, _context: &Context, action: Actio
                 sorted_indices.sort_by(|a, b| b.cmp(a));
                 for index in sorted_indices {
                     if index < state.shell_packages.len() {
-                        state.shell_packages.remove(index);
+                        let pkg = state.shell_packages.remove(index);
+                        state.domain.package_info.remove(&pkg);
                     }
                 }
                 if state.shell_packages.is_empty() {
@@ -577,11 +587,25 @@ pub fn handle_nix_action(state: &mut AppState, _context: &Context, action: Actio
                     } else {
                         format!("nixpkgs/{}#{}@{}", version_info.hash, pkg_name, version_info.version)
                     };
-                    state.shell_packages.push(pinned_pkg);
+                    if !state.shell_packages.contains(&pinned_pkg) {
+                        state.shell_packages.push(pinned_pkg.clone());
+                        state.domain.package_info.insert(
+                            pinned_pkg,
+                            (
+                                state.ui.selected_package_description.clone().unwrap_or_default(),
+                                version_info.version.clone(),
+                                state.ui.selected_package_is_unfree,
+                                String::new(),
+                            ),
+                        );
+                    }
                 }
                 state.ui.is_adding_package = false;
                 state.ui.is_selecting_version = false;
                 state.ui.selected_package_name = None;
+                state.ui.selected_package_description = None;
+                state.ui.package_search_query = String::new();
+                state.domain.package_search_results = Vec::new();
                 return;
             }
 

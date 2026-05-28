@@ -54,13 +54,97 @@ fn main() -> Result<()> {
 
     if let Ok(Some(pkgs)) = result {
         if !pkgs.is_empty() {
+            let system_nixpkgs_path = app.domain.system_nixpkgs_path.clone();
+            let system_version = app.domain.system_nixpkgs_version.clone();
+            
+            let normalized_pkgs: Vec<String> = pkgs
+                .iter()
+                .map(|pkg| {
+                    let pkg_ref = if let Some((path, _version)) = pkg.rsplit_once('@') {
+                        path
+                    } else {
+                        pkg
+                    };
+
+                    if pkg_ref.starts_with("system/") {
+                        if let Some((_, suffix)) = pkg_ref.split_once('#') {
+                            if let Some(path) = &system_nixpkgs_path {
+                                if std::path::Path::new(path).exists() {
+                                    return format!("path:{}#{}", path, suffix);
+                                }
+                            }
+                            
+                            if let Some(version) = &system_version {
+                                let channel = if version.contains("pre") || version.contains("unstable") {
+                                    "nixpkgs-unstable"
+                                } else {
+                                    let parts: Vec<&str> = version.split('.').collect();
+                                    if parts.len() >= 2 {
+                                        &format!("nixos-{}", &parts[..2].join("."))
+                                    } else {
+                                        "nixpkgs-unstable"
+                                    }
+                                };
+                                return format!("nixpkgs/{}#{}", channel, suffix);
+                            }
+                        }
+                        
+                        let hash_part = &pkg_ref[7..];
+                        format!("github:NixOS/nixpkgs/{}", hash_part)
+                    } else if pkg_ref.starts_with("nixpkgs/") {
+                        let hash_part = &pkg_ref[8..];
+                        if hash_part.contains('#') {
+                            let (hash, _pkg) = hash_part.split_once('#').unwrap();
+                            if hash.len() != 40 && !hash.contains('.') {
+                                return format!("nixpkgs#{}", hash_part);
+                            }
+                        }
+                        format!("github:NixOS/nixpkgs/{}", hash_part)
+                    } else if pkg_ref.contains('#') {
+                        pkg_ref.to_string()
+                    } else {
+                        format!("nixpkgs#{}", pkg_ref)
+                    }
+                })
+                .collect();
+
             use color_eyre::owo_colors::OwoColorize;
-            println!("Opening shell with packages: {}", pkgs.join(", ").cyan());
+            println!(
+                "Opening shell with packages: {}",
+                normalized_pkgs.join(", ").cyan()
+            );
+
             let mut cmd = std::process::Command::new("nix");
             cmd.arg("shell");
-            for pkg in pkgs {
+            for pkg in normalized_pkgs {
                 cmd.arg(pkg);
             }
+            cmd.arg("--impure");
+            
+            let env_name = {
+                let shortened_packages: Vec<String> = pkgs.iter().map(|pkg| {
+                    let mut display_pkg = pkg.clone();
+                    if let Some(hash_idx) = display_pkg.find("nixpkgs/") {
+                        if let Some(hash_end) = display_pkg[hash_idx + 8..].find('#') {
+                            let hash = &display_pkg[hash_idx + 8..hash_idx + 8 + hash_end];
+                            if hash.len() > 7 {
+                                display_pkg = format!("{}{}{}", &display_pkg[..hash_idx + 8], &hash[..7], &display_pkg[hash_idx + 8 + hash_end..]);
+                            }
+                        }
+                    } else if let Some(hash_idx) = display_pkg.find("system/") {
+                        if let Some(hash_end) = display_pkg[hash_idx + 7..].find('#') {
+                            let hash = &display_pkg[hash_idx + 7..hash_idx + 7 + hash_end];
+                            let short_hash = if hash.len() > 7 { &hash[..7] } else { hash };
+                            display_pkg = format!("{}#{}", short_hash, &display_pkg[hash_idx + 7 + hash_end + 1..]);
+                        }
+                    }
+                    display_pkg
+                }).collect();
+                format!("nui-shell:{}-env", shortened_packages.join(":"))
+            };
+            
+            cmd.env("name", env_name);
+            cmd.env("NIXPKGS_ALLOW_UNFREE", "1");
             cmd.status()?;
         }
     }

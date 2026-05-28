@@ -371,6 +371,7 @@ pub struct DomainData {
     pub nxv_version: Option<String>,
     pub system_nixpkgs_version: Option<String>,
     pub system_nixpkgs_hash: Option<String>,
+    pub system_nixpkgs_path: Option<String>,
     pub nxv_update_progress: Option<String>,
 }
 

@@ -149,6 +149,16 @@ impl AppState {
                     } else {
                         None
                     }),
+                system_nixpkgs_path: std::process::Command::new("nix")
+                    .args(["eval", "--raw", "--impure", "--expr", "toString <nixpkgs>"])
+                    .output()
+                    .ok()
+                    .and_then(|o| if o.status.success() {
+                        let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        if s.is_empty() { None } else { Some(s) }
+                    } else {
+                        None
+                    }),
                 system_nixpkgs_hash: std::process::Command::new("nix")
                     .args(["eval", "--raw", "--impure", "--expr", "builtins.substring 0 32 (builtins.baseNameOf (toString <nixpkgs>))"])
                     .output()
