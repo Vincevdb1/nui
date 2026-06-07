@@ -72,23 +72,38 @@ impl NixService {
                 }
             });
 
-        let hash = std::process::Command::new("nix")
-            .args([
-                "eval",
-                "--raw",
-                "--impure",
-                "--expr",
-                "builtins.substring 0 32 (builtins.baseNameOf (toString <nixpkgs>))",
-            ])
+        let hash = std::process::Command::new("nixos-version")
+            .arg("--revision")
             .output()
             .ok()
             .and_then(|o| {
                 if o.status.success() {
                     let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                    if s.is_empty() { None } else { Some(s) }
+                    if s.len() >= 7 { Some(s) } else { None }
                 } else {
                     None
                 }
+            })
+            .or_else(|| {
+                // Try to find it in the store path name if it's not a standard revision
+                std::process::Command::new("nix")
+                    .args([
+                        "eval",
+                        "--raw",
+                        "--impure",
+                        "--expr",
+                        "builtins.substring 0 32 (builtins.baseNameOf (toString <nixpkgs>))",
+                    ])
+                    .output()
+                    .ok()
+                    .and_then(|o| {
+                        if o.status.success() {
+                            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                            if s.is_empty() { None } else { Some(s) }
+                        } else {
+                            None
+                        }
+                    })
             });
 
         (version, path, hash)

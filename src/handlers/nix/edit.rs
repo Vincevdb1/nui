@@ -149,7 +149,21 @@ pub fn handle_edit_action(state: &mut AppState, _context: &Context, action: Acti
             }
         }
         Action::AddPackageInfo(name, info) => {
-            state.domain.package_info.insert(name, info);
+            state.domain.package_info.insert(name.clone(), info.clone());
+            if state.mode == Mode::Shell {
+                // If the package is in our shell list, update its version if it was a placeholder or inaccurate
+                if let Some(pos) = state.shell_packages.iter().position(|p| p == &name) {
+                    let version = &info.1;
+                    if let Some(at_idx) = name.rfind('@') {
+                        let new_name = format!("{}@{}", &name[..at_idx], version);
+                        if new_name != name {
+                            state.shell_packages[pos] = new_name.clone();
+                            state.domain.package_info.remove(&name);
+                            state.domain.package_info.insert(new_name, info);
+                        }
+                    }
+                }
+            }
         }
         Action::SetContextData(inputs, outputs) => {
             state.domain.inputs = inputs;

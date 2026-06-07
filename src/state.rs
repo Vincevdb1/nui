@@ -140,7 +140,13 @@ impl AppState {
         let query = self.ui.package_search_query.clone();
 
         let mut search_targets: Vec<String> = if self.mode == Mode::Shell {
-            vec!["nxv".to_string()]
+            let mut targets = vec!["nxv".to_string()];
+            if let Some(version) = &self.domain.system_nixpkgs_version {
+                targets.push(version.clone());
+            } else {
+                targets.push("nixos-unstable".to_string());
+            }
+            targets
         } else {
             let mut targets = Vec::new();
             for input in &self.domain.inputs {
@@ -162,6 +168,7 @@ impl AppState {
             self.mode.clone(),
             self.domain.inputs.clone(),
             self.domain.system_nixpkgs_hash.clone(),
+            self.domain.system_nixpkgs_version.clone(),
         );
     }
 

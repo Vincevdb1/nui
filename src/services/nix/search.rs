@@ -30,11 +30,18 @@ impl NixService {
         mode: Mode,
         inputs: Vec<Input>,
         _system_nixpkgs_hash: Option<String>,
+        system_nixpkgs_version: Option<String>,
     ) {
         let tx = self.tx.clone();
 
         let mut search_targets: Vec<String> = if mode == Mode::Shell {
-            vec!["nxv".to_string()]
+            let mut targets = vec!["nxv".to_string()];
+            if let Some(version) = &system_nixpkgs_version {
+                targets.push(version.clone());
+            } else {
+                targets.push("nixos-unstable".to_string());
+            }
+            targets
         } else {
             let mut targets = Vec::new();
             for input in &inputs {
@@ -70,101 +77,132 @@ impl NixService {
                 let mut nix_search_err = None;
                 let mut nxv_search_err = None;
 
-                match domain::nix_search_cli(query.clone(), "nixos-unstable".to_string()) {
-                    Ok(packages) => {
-                        for p in packages {
-                            let entry =
-                                results_map.entry(p.attribute.clone()).or_insert_with(|| {
-                                    SearchResult {
-                                        name: p.attribute.clone(),
-                                        description: p.description.clone().unwrap_or_default(),
-                                        versions: Vec::new(),
-                                        platforms: p.platforms.clone().unwrap_or_default(),
-                                        is_unfree: false,
-                                        source_input: None,
-                                        hash: p.hash.clone(),
-                                    }
-                                });
-
-                            if let Some(license_set) = p.license_set {
-                                if license_set
-                                    .iter()
-                                    .any(|l| l.to_lowercase().contains("unfree"))
-                                {
-                                    entry.is_unfree = true;
-                                }
-                            }
-
-                            entry.versions.push(ChannelVersion {
-                                version: p.version.unwrap_or_else(|| "Unknown".to_string()),
-                                channel: "nixos-unstable".to_string(),
-                                locked_version: None,
-                            });
-                        }
-                    }
-                    Err(e) => {
-                        crate::log_output("Nix Search Error", e.clone());
-                        nix_search_err = Some(e);
+                let mut threads = Vec::new();
+                for target in &search_targets {
+                    if target == "nxv" {
+                        let q = query.clone();
+                        threads.push(std::thread::spawn(move || {
+                            let res = domain::nxv_search(q);
+                            ("nxv".to_string(), res)
+                        }));
+                    } else {
+                        let q = query.clone();
+                        let t = target.clone();
+                        threads.push(std::thread::spawn(move || {
+                            let res = domain::nix_search_cli(q, t.clone());
+                            (t, res)
+                        }));
                     }
                 }
 
-                match domain::nxv_search(query.clone()) {
-                    Ok(packages) => {
-                        for p in packages {
-                            let entry =
-                                results_map.entry(p.attribute.clone()).or_insert_with(|| {
-                                    SearchResult {
-                                        name: p.attribute.clone(),
-                                        description: p.description.clone().unwrap_or_default(),
-                                        versions: Vec::new(),
-                                        platforms: p.platforms.clone().unwrap_or_default(),
-                                        is_unfree: false,
-                                        source_input: None,
-                                        hash: p.hash.clone(),
+                for t in threads {
+                    match t.join() {
+                        Ok((source, Ok(packages))) => {
+                            for p in packages {
+                                let entry =
+                                    results_map.entry(p.attribute.clone()).or_insert_with(|| {
+                                        SearchResult {
+                                            name: p.attribute.clone(),
+                                            description: p.description.clone().unwrap_or_default(),
+                                            versions: Vec::new(),
+                                            platforms: p.platforms.clone().unwrap_or_default(),
+                                            is_unfree: false,
+                                            source_input: None,
+                                            hash: p.hash.clone(),
+                                        }
+                                    });
+
+                                if entry.description.is_empty() {
+                                    if let Some(desc) = p.description {
+                                        entry.description = desc;
                                     }
-                                });
-
-                            if entry.description.is_empty() {
-                                if let Some(desc) = p.description {
-                                    entry.description = desc;
                                 }
-                            }
 
-                            if entry.platforms.is_empty() {
-                                if let Some(platforms) = p.platforms {
-                                    entry.platforms = platforms;
+                                if entry.platforms.is_empty() {
+                                    if let Some(platforms) = p.platforms {
+                                        entry.platforms = platforms;
+                                    }
                                 }
-                            }
 
-                            if entry.hash.is_none() {
-                                entry.hash = p.hash.clone();
-                            }
-
-                            if let Some(license_set) = p.license_set {
-                                if license_set
-                                    .iter()
-                                    .any(|l| l.to_lowercase().contains("unfree"))
-                                {
-                                    entry.is_unfree = true;
+                                if entry.hash.is_none() {
+                                    entry.hash = p.hash.clone();
                                 }
-                            }
 
-                            if !entry.versions.iter().any(|v| v.channel == "nxv") {
-                                entry.versions.push(ChannelVersion {
-                                    version: p.version.unwrap_or_else(|| "Unknown".to_string()),
-                                    channel: "nxv".to_string(),
-                                    locked_version: None,
-                                });
+                                if let Some(license_set) = p.license_set {
+                                    if license_set
+                                        .iter()
+                                        .any(|l| l.to_lowercase().contains("unfree"))
+                                    {
+                                        entry.is_unfree = true;
+                                    }
+                                }
+
+                                let channel_display = if source == "nxv" {
+                                    "nxv".to_string()
+                                } else if source.contains('.') || source.contains("git") {
+                                    // It's a versioned channel or system version, keep it
+                                    source.clone()
+                                } else {
+                                    "nixos-unstable".to_string()
+                                };
+
+                                if !entry.versions.iter().any(|v| v.channel == channel_display) {
+                                    entry.versions.push(ChannelVersion {
+                                        version: p.version.unwrap_or_else(|| "Unknown".to_string()),
+                                        channel: channel_display,
+                                        locked_version: None,
+                                    });
+                                }
                             }
                         }
-                    }
-                    Err(e) => {
-                        crate::log_output("NXV Search Error", e.clone());
-                        nxv_search_err = Some(e);
+                        Ok((source, Err(e))) => {
+                            crate::log_output(format!("Search Error ({})", source), e.clone());
+                            if source == "nxv" {
+                                nxv_search_err = Some(e);
+                            } else {
+                                nix_search_err = Some(e);
+                            }
+                        }
+                        Err(_) => {
+                            crate::log_output("Thread Error", "A search thread panicked");
+                        }
                     }
                 }
 
-                if results_map.is_empty() {
+                // In Shell mode, fetch actual versions from the system nixpkgs for accuracy
+                let mut final_results: Vec<SearchResult> = results_map.into_values().collect();
+                crate::services::nix::search_sort::sort_search_results(&mut final_results, &query);
+
+                // Fetch system versions for the top 50 results
+                let attrs_to_fetch: Vec<String> = final_results
+                    .iter()
+                    .take(50)
+                    .map(|r| r.name.clone())
+                    .collect();
+
+                let system_versions = domain::fetch_system_versions_batch(attrs_to_fetch);
+
+                for res in final_results.iter_mut().take(50) {
+                    if let Some(sys_version) = system_versions.get(&res.name) {
+                        if sys_version != "Unknown" {
+                            // Add or update the system version in the versions list
+                            if let Some(v) = res.versions.iter_mut().find(|v| v.channel == "system") {
+                                v.version = sys_version.clone();
+                            } else {
+                                res.versions.insert(
+                                    0,
+                                    ChannelVersion {
+                                        version: sys_version.clone(),
+                                        channel: "system".to_string(),
+                                        locked_version: None,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
+
+                if final_results.is_empty() {
                     if let Some(e) = nix_search_err {
                         let _ = tx.send(Action::SetPackageSearchResults(Err(e)));
                         return;
@@ -174,6 +212,8 @@ impl NixService {
                         return;
                     }
                 }
+                let _ = tx.send(Action::SetPackageSearchResults(Ok(final_results)));
+                return;
             } else {
                 let mut threads = Vec::new();
                 for target in search_targets {

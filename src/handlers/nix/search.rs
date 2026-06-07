@@ -21,9 +21,31 @@ pub fn handle_search_action(state: &mut AppState, _context: &Context, action: Ac
                     if state.mode == Mode::Shell {
                         let version = result
                             .versions
-                            .first()
+                            .iter()
+                            .find(|v| v.channel == "system")
                             .map(|v| v.version.clone())
-                            .unwrap_or_else(|| "Unknown".to_string());
+                            .unwrap_or_else(|| {
+                                if let Some(sys_v) = state.domain.system_nixpkgs_version.as_ref() {
+                                    result
+                                        .versions
+                                        .iter()
+                                        .find(|v| v.channel == *sys_v || sys_v.starts_with(&v.channel))
+                                        .map(|v| v.version.clone())
+                                        .unwrap_or_else(|| {
+                                            result
+                                                .versions
+                                                .first()
+                                                .map(|v| v.version.clone())
+                                                .unwrap_or_else(|| "Unknown".to_string())
+                                        })
+                                } else {
+                                    result
+                                        .versions
+                                        .first()
+                                        .map(|v| v.version.clone())
+                                        .unwrap_or_else(|| "Unknown".to_string())
+                                }
+                            });
                         let pkg_to_add =
                             if let Some(hash) = state.domain.system_nixpkgs_hash.as_ref() {
                                 format!("system/{}#{}@{}", hash, package_name, version)
@@ -36,7 +58,7 @@ pub fn handle_search_action(state: &mut AppState, _context: &Context, action: Ac
                         if !state.shell_packages.contains(&pkg_to_add) {
                             state.shell_packages.push(pkg_to_add.clone());
                             state.domain.package_info.insert(
-                                pkg_to_add,
+                                pkg_to_add.clone(),
                                 (
                                     result.description.clone(),
                                     version,
@@ -44,6 +66,7 @@ pub fn handle_search_action(state: &mut AppState, _context: &Context, action: Ac
                                     String::new(),
                                 ),
                             );
+                            state.fetch_shell_package_metadata(pkg_to_add);
                         }
                         state.ui.is_adding_package = false;
                         state.ui.package_search_query = String::new();

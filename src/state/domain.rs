@@ -254,6 +254,41 @@ pub fn extract_upstream_channel(input: &Input) -> String {
     "nixos-unstable".to_string()
 }
 
+pub fn fetch_system_versions_batch(attrs: Vec<String>) -> HashMap<String, String> {
+    if attrs.is_empty() {
+        return HashMap::new();
+    }
+
+    let mut expr = "let pkgs = import <nixpkgs> {}; \
+                    lib = pkgs.lib; \
+                    getV = pathStr: let \
+                      path = lib.splitString \".\" pathStr; \
+                      pkg = lib.attrByPath path null pkgs; \
+                      res = if pkg != null then builtins.tryEval (pkg.version or \"Unknown\") else { success = false; }; \
+                    in if res.success then res.value else \"Unknown\"; \
+                    in { ".to_string();
+
+    for attr in &attrs {
+        // Simple sanitization: only allow alphanumeric, dots, underscores, hyphens
+        if attr.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-') {
+            expr.push_str(&format!("\"{}\" = getV \"{}\"; ", attr, attr));
+        }
+    }
+    expr.push('}');
+
+    let output = std::process::Command::new("nix")
+        .args(["eval", "--json", "--impure", "--expr", &expr])
+        .output();
+
+    if let Ok(output) = output {
+        if output.status.success() {
+            return serde_json::from_slice(&output.stdout).unwrap_or_default();
+        }
+    }
+
+    HashMap::new()
+}
+
 pub fn fetch_accurate_version(rev: String, attribute: String) -> Option<String> {
     let flake_url = format!("github:NixOS/nixpkgs/{}#{}", rev, attribute);
     let output = std::process::Command::new("nix")

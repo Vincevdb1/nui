@@ -21,7 +21,7 @@ pub fn render_package_search(
     list_state: &mut ListState,
     installed_packages: &HashMap<String, (String, String, bool, String)>,
     is_shell_mode: bool,
-    _system_nixpkgs_version: Option<&String>,
+    system_nixpkgs_version: Option<&String>,
     system_nixpkgs_hash: Option<&String>,
 ) {
     let list_title = if is_searching {
@@ -73,10 +73,35 @@ pub fn render_package_search(
             + 2; // +2 for unfree marker space
 
         if is_shell_mode {
+            let sys_v = system_nixpkgs_version.map(|v| v.as_str());
             let max_version_width = results
                 .iter()
                 .map(|res| {
-                    let mut len = res.versions.first().map(|v| v.version.len()).unwrap_or(0);
+                    let version = res
+                        .versions
+                        .iter()
+                        .find(|v| v.channel == "system")
+                        .map(|v| v.version.as_str())
+                        .unwrap_or_else(|| {
+                            if let Some(sys_v) = sys_v {
+                                res.versions
+                                    .iter()
+                                    .find(|v| v.channel == sys_v || sys_v.starts_with(&v.channel))
+                                    .map(|v| v.version.as_str())
+                                    .unwrap_or_else(|| {
+                                        res.versions
+                                            .first()
+                                            .map(|v| v.version.as_str())
+                                            .unwrap_or("Unknown")
+                                    })
+                            } else {
+                                res.versions
+                                    .first()
+                                    .map(|v| v.version.as_str())
+                                    .unwrap_or("Unknown")
+                            }
+                        });
+                    let mut len = version.len();
                     let sys_hash = system_nixpkgs_hash.map(|s| s.as_str());
                     if res.hash.as_deref().unwrap_or("") != sys_hash.unwrap_or("") {
                         len += 2; // " 󰚰"
@@ -126,10 +151,28 @@ pub fn render_package_search(
                     spans.push(Span::raw(" | "));
                     let mut version = res
                         .versions
-                        .first()
-                        .map(|v| v.version.as_str())
-                        .unwrap_or("Unknown")
-                        .to_string();
+                        .iter()
+                        .find(|v| v.channel == "system")
+                        .map(|v| v.version.clone())
+                        .unwrap_or_else(|| {
+                            if let Some(sys_v) = sys_v {
+                                res.versions
+                                    .iter()
+                                    .find(|v| v.channel == sys_v || sys_v.starts_with(&v.channel))
+                                    .map(|v| v.version.clone())
+                                    .unwrap_or_else(|| {
+                                        res.versions
+                                            .first()
+                                            .map(|v| v.version.clone())
+                                            .unwrap_or_else(|| "Unknown".to_string())
+                                    })
+                            } else {
+                                res.versions
+                                    .first()
+                                    .map(|v| v.version.clone())
+                                    .unwrap_or_else(|| "Unknown".to_string())
+                            }
+                        });
                     let sys_hash = system_nixpkgs_hash.map(|s| s.as_str());
                     let has_update = res.hash.as_deref().unwrap_or("") != sys_hash.unwrap_or("");
                     if has_update {
@@ -362,6 +405,9 @@ pub fn render_package_search(
 }
 
 fn get_channel_color(channel: &str) -> Color {
+    if channel == "system" {
+        return Color::Cyan;
+    }
     let mut hash: u32 = 0;
     for c in channel.chars() {
         hash = hash.wrapping_mul(31).wrapping_add(c as u32);

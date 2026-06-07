@@ -129,6 +129,9 @@ pub fn render_details(frame: &mut Frame, result: &SearchResult) {
 }
 
 fn get_channel_color(channel: &str) -> Color {
+    if channel == "system" {
+        return Color::Cyan;
+    }
     let mut hash: u32 = 0;
     for c in channel.chars() {
         hash = hash.wrapping_mul(31).wrapping_add(c as u32);
