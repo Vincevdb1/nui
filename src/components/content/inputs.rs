@@ -1,5 +1,5 @@
-use ratatui::{prelude::*, widgets::*};
 use crate::nix::Input;
+use ratatui::{prelude::*, widgets::*};
 
 pub struct InputsProps<'a> {
     pub inputs: &'a [Input],

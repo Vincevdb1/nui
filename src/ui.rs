@@ -1,3 +1,4 @@
+pub mod events;
 pub mod list;
 
 use crate::app::App;
@@ -102,12 +103,24 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         "a: Add | d: Remove | v: Version | i: Info | p: Pin | s: Start Shell | m: Mode | t: Templates | j/k: Select | Space: Multi-select | ?: Help | q: Quit"
     } else {
         match app.ui.selected_index {
-            1 => "Tab: Switch focus | m: Switch Mode | t: Templates | 1-5: Select tab | ?: Help | q: Quit",
-            2 => "a: Add | d: Remove | i: Info | p: Pin | m: Mode | t: Templates | Shift-j/k: Select | j/k: Navigate pkgs | Space: Multi-select | ?: Help | q: Quit",
-            3 => "a: Add Input | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit",
-            4 => "j/k: Select Output | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit",
-            5 => "j/k: Scroll Logs | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit",
-            _ => "Press 'm' to switch mode, 't' for templates, 'Tab' to switch focus, '?' for help, 'q' to quit",
+            1 => {
+                "Tab: Switch focus | m: Switch Mode | t: Templates | 1-5: Select tab | ?: Help | q: Quit"
+            }
+            2 => {
+                "a: Add | d: Remove | i: Info | p: Pin | m: Mode | t: Templates | Shift-j/k: Select | j/k: Navigate pkgs | Space: Multi-select | ?: Help | q: Quit"
+            }
+            3 => {
+                "a: Add Input | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit"
+            }
+            4 => {
+                "j/k: Select Output | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit"
+            }
+            5 => {
+                "j/k: Scroll Logs | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit"
+            }
+            _ => {
+                "Press 'm' to switch mode, 't' for templates, 'Tab' to switch focus, '?' for help, 'q' to quit"
+            }
         }
     };
 
@@ -138,11 +151,18 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     }
 
     if app.ui.is_confirming_template_overwrite {
-        let name = app.ui.pending_template_name.as_deref().unwrap_or("Template");
+        let name = app
+            .ui
+            .pending_template_name
+            .as_deref()
+            .unwrap_or("Template");
         popups::confirm::render(
             frame,
             "Overwrite flake.nix?",
-            &format!("Applying '{}' will OVERWRITE your existing flake.nix. Continue?", name),
+            &format!(
+                "Applying '{}' will OVERWRITE your existing flake.nix. Continue?",
+                name
+            ),
         );
     }
 
@@ -194,7 +214,9 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             {
                 popups::add_package::render_details(frame, result);
             }
-        } else if app.ui.selected_index == 2 || (app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1) {
+        } else if app.ui.selected_index == 2
+            || (app.mode == crate::state::Mode::Shell && app.ui.selected_index == 1)
+        {
             let mut all_packages = Vec::new();
             if app.mode == crate::state::Mode::Shell {
                 for p in &app.shell_packages {
@@ -204,7 +226,9 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                     if p.contains('@') {
                         if let Some((rest, v)) = p.rsplit_once('@') {
                             version = v.to_string();
-                            if (rest.starts_with("nixpkgs/") || rest.starts_with("system/")) && rest.contains('#') {
+                            if (rest.starts_with("nixpkgs/") || rest.starts_with("system/"))
+                                && rest.contains('#')
+                            {
                                 if let Some((prefix, suffix)) = rest.split_once('#') {
                                     name = suffix.to_string();
                                     if let Some((_, h)) = prefix.split_once('/') {
@@ -215,7 +239,9 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                                 name = rest.to_string();
                             }
                         }
-                    } else if (p.starts_with("nixpkgs/") || p.starts_with("system/")) && p.contains('#') {
+                    } else if (p.starts_with("nixpkgs/") || p.starts_with("system/"))
+                        && p.contains('#')
+                    {
                         if let Some((prefix, suffix)) = p.split_once('#') {
                             name = suffix.to_string();
                             if let Some((_, h)) = prefix.split_once('/') {
@@ -224,11 +250,12 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                         }
                     }
 
-                    let (description, is_unfree) = if let Some((desc, _, unfree, _)) = app.domain.package_info.get(p) {
-                        (desc.clone(), *unfree)
-                    } else {
-                        ("".to_string(), false)
-                    };
+                    let (description, is_unfree) =
+                        if let Some((desc, _, unfree, _)) = app.domain.package_info.get(p) {
+                            (desc.clone(), *unfree)
+                        } else {
+                            ("".to_string(), false)
+                        };
 
                     all_packages.push(crate::state::domain::SearchResult {
                         name: name.clone(),
@@ -245,7 +272,9 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                     });
                 }
             } else {
-                for (name, (description, version, is_unfree, source_input)) in &app.domain.package_info {
+                for (name, (description, version, is_unfree, source_input)) in
+                    &app.domain.package_info
+                {
                     all_packages.push(crate::state::domain::SearchResult {
                         name: name.clone(),
                         description: description.clone(),

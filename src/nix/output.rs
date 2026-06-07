@@ -1,7 +1,0 @@
-#[derive(Debug, Clone, Default)]
-pub struct Output {
-    pub path: String,
-    pub name: Option<String>,
-    pub config_type: String,
-    pub content: Option<String>,
-}

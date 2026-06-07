@@ -102,7 +102,10 @@ pub fn nix_search_cli(query: String, channel: String) -> Result<Vec<SearchPackag
         .map_err(|e| format!("Failed to execute nix-search: {}. Make sure it's installed and you have an internet connection.", e))?;
 
     if !output.status.success() {
-        return Err(format!("nix-search failed with status: {}. This might be due to a connection issue or an invalid channel.", output.status));
+        return Err(format!(
+            "nix-search failed with status: {}. This might be due to a connection issue or an invalid channel.",
+            output.status
+        ));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -119,7 +122,9 @@ pub fn nix_search_cli(query: String, channel: String) -> Result<Vec<SearchPackag
                 version: pkg.package_pversion,
                 description: pkg.package_description,
                 platforms: pkg.package_platforms,
-                license_set: pkg.package_license.map(|ls| ls.into_iter().map(|l| l.full_name).collect()),
+                license_set: pkg
+                    .package_license
+                    .map(|ls| ls.into_iter().map(|l| l.full_name).collect()),
                 hash: None,
             })
         })
@@ -148,7 +153,10 @@ pub fn nix_search_flake(flake_url: String, query: String) -> Result<Vec<SearchPa
         .map_err(|e| format!("Failed to execute nix search: {}. Make sure nix is installed and you have an internet connection.", e))?;
 
     if !output.status.success() {
-        return Err(format!("nix search failed with status: {}. If searching a remote flake, check your internet connection.", output.status));
+        return Err(format!(
+            "nix search failed with status: {}. If searching a remote flake, check your internet connection.",
+            output.status
+        ));
     }
 
     let results: HashMap<String, NixSearchPackage> = serde_json::from_slice(&output.stdout)
@@ -188,7 +196,10 @@ pub fn nxv_search(query: String) -> Result<Vec<SearchPackage>, String> {
         .map_err(|e| format!("Failed to execute nxv: {}. Make sure nxv is installed and you have an internet connection.", e))?;
 
     if !output.status.success() {
-        return Err(format!("nxv search failed with status: {}. This might be due to a connection issue.", output.status));
+        return Err(format!(
+            "nxv search failed with status: {}. This might be due to a connection issue.",
+            output.status
+        ));
     }
 
     let results: Vec<NXVPackage> = serde_json::from_slice(&output.stdout)
@@ -282,7 +293,10 @@ pub fn fetch_package_versions(pkg: &str) -> Result<Vec<VersionInfo>, String> {
         .map_err(|e| format!("Failed to execute nxv: {}. Make sure nxv is installed and you have an internet connection.", e))?;
 
     if !output.status.success() {
-        return Err(format!("nxv search failed with status: {}. This might be due to a connection issue.", output.status));
+        return Err(format!(
+            "nxv search failed with status: {}. This might be due to a connection issue.",
+            output.status
+        ));
     }
 
     let results: Vec<NXVResult> = serde_json::from_slice(&output.stdout)
@@ -374,4 +388,3 @@ pub struct DomainData {
     pub system_nixpkgs_path: Option<String>,
     pub nxv_update_progress: Option<String>,
 }
-

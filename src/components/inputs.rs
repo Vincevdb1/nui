@@ -7,7 +7,8 @@ pub struct InputsProps<'a> {
 }
 
 pub fn render(props: &InputsProps, frame: &mut Frame, area: Rect) {
-    let list_items: Vec<ListItem> = props.inputs
+    let list_items: Vec<ListItem> = props
+        .inputs
         .iter()
         .map(|input| {
             ListItem::new(Line::from(vec![Span::styled(

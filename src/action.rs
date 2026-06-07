@@ -1,6 +1,6 @@
 use crate::components::command_log::LogEntry;
-use crate::state::domain::{SearchResult, VersionInfo};
 use crate::nix::{Input, Output};
+use crate::state::domain::{SearchResult, VersionInfo};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -45,7 +45,10 @@ pub enum Action {
     Log(LogEntry),
     SetSuggestions(Result<Vec<(String, String)>, String>),
     SetPackageSearchResults(Result<Vec<SearchResult>, String>),
-    SetPackageDetails(usize, Result<HashMap<String, (String, String, bool, String)>, String>),
+    SetPackageDetails(
+        usize,
+        Result<HashMap<String, (String, String, bool, String)>, String>,
+    ),
     AddPackageInfo(String, (String, String, bool, String)),
     SetContextData(Vec<Input>, Vec<Output>),
     SetVersions(Result<Vec<VersionInfo>, String>),
@@ -66,6 +69,7 @@ pub enum Action {
     CancelApplyTemplate,
     ToggleSaveShellTemplate,
     SaveShellTemplate,
+    ApplyShellTemplate(Vec<String>),
     NewTemplateChar(char),
     NewTemplateBackspace,
 

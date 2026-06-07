@@ -69,11 +69,7 @@ pub struct CommandLogProps<'a> {
     pub progress: Option<&'a str>,
 }
 
-pub fn render(
-    frame: &mut Frame,
-    area: Rect,
-    props: &mut CommandLogProps,
-) {
+pub fn render(frame: &mut Frame, area: Rect, props: &mut CommandLogProps) {
     let title = if let Some(p) = props.progress {
         format!(" [5] Command Log (Updating NXV Index: {}) ", p)
     } else {

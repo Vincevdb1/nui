@@ -1,15 +1,7 @@
-use serde::{Deserialize, Serialize};
+use crate::nix::model::Package;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::process::Command;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Package {
-    pub name: String,
-    pub description: String,
-    pub version: Option<String>,
-    pub is_unfree: bool,
-    pub source_input: Option<String>,
-}
 
 impl Package {
     pub fn fetch_from_output(
@@ -27,7 +19,10 @@ impl Package {
 
         let (target_attr, extract_logic) = match output_type {
             "nixosConfigurations" | "darwinConfigurations" => (
-                format!("{}.{}.config.environment.systemPackages", output_type, quoted_name),
+                format!(
+                    "{}.{}.config.environment.systemPackages",
+                    output_type, quoted_name
+                ),
                 "extractList t",
             ),
             "homeConfigurations" => (
@@ -69,8 +64,11 @@ impl Package {
             extract_logic
         );
 
-
-        let attr_path = format!("{}#{}", crate::nix::flake::normalize_flake_ref(flake_path), target_attr);
+        let attr_path = format!(
+            "{}#{}",
+            crate::nix::parser::normalize_flake_ref(flake_path),
+            target_attr
+        );
 
         crate::log_action(
             "Evaluating nix expressions",
@@ -110,7 +108,10 @@ impl Package {
                     } else {
                         pkg.name
                     };
-                    results.insert(key, (pkg.description, pkg.version, pkg.is_unfree, String::new()));
+                    results.insert(
+                        key,
+                        (pkg.description, pkg.version, pkg.is_unfree, String::new()),
+                    );
                 }
                 crate::log_output(
                     "Nix Output",
@@ -123,7 +124,13 @@ impl Package {
             }
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            crate::log_output("Nix Error", format!("{}. This might be due to a connection issue or an evaluation error.", stderr));
+            crate::log_output(
+                "Nix Error",
+                format!(
+                    "{}. This might be due to a connection issue or an evaluation error.",
+                    stderr
+                ),
+            );
             Err(stderr.to_string())
         }
     }

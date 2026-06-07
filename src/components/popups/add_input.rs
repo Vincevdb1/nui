@@ -15,10 +15,7 @@ pub struct AddInputProps<'a> {
     pub suggestions: &'a mut Suggestions,
 }
 
-pub fn render(
-    frame: &mut Frame,
-    props: &mut AddInputProps,
-) {
+pub fn render(frame: &mut Frame, props: &mut AddInputProps) {
     let area = centered_rect(80, 70, frame.area());
     frame.render_widget(Clear, area);
 
@@ -84,7 +81,11 @@ pub fn render(
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Percentage(50),
-                Constraint::Length(if props.suggestions.error.is_some() { 4 } else { 1 }),
+                Constraint::Length(if props.suggestions.error.is_some() {
+                    4
+                } else {
+                    1
+                }),
                 Constraint::Percentage(50),
             ])
             .split(area);
@@ -92,10 +93,16 @@ pub fn render(
         if let Some(err) = &props.suggestions.error {
             use ratatui::text::{Line, Span};
             let error_text = vec![
-                Line::from(vec![Span::styled("Error fetching suggestions:", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))]),
+                Line::from(vec![Span::styled(
+                    "Error fetching suggestions:",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                )]),
                 Line::from(vec![Span::styled(err, Style::default().fg(Color::Red))]),
                 Line::from(""),
-                Line::from(vec![Span::styled("Please check your internet connection.", Style::default().fg(Color::DarkGray))]),
+                Line::from(vec![Span::styled(
+                    "Please check your internet connection.",
+                    Style::default().fg(Color::DarkGray),
+                )]),
             ];
             let error_para = Paragraph::new(error_text).alignment(Alignment::Center);
             frame.render_widget(error_para, vertical_chunks[1]);
@@ -104,7 +111,8 @@ pub fn render(
             frame.render_widget(empty, vertical_chunks[1]);
         }
     } else {
-        let items: Vec<ListItem> = props.suggestions
+        let items: Vec<ListItem> = props
+            .suggestions
             .filtered
             .iter()
             .map(|(name, _)| ListItem::new(format!("  {}", name)))

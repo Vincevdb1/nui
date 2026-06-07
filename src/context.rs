@@ -4,8 +4,8 @@ pub mod scanner;
 pub use nix_file::NixFile;
 pub use scanner::find_nix_files;
 
-use std::sync::mpsc::Sender;
 use crate::action::Action;
+use std::sync::mpsc::Sender;
 
 pub struct Context {
     pub tx: Sender<Action>,

@@ -1,6 +1,6 @@
-use crate::state::AppState;
 use crate::action::Action;
 use crate::context::Context;
+use crate::state::AppState;
 
 pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action) {
     match action {
@@ -54,7 +54,11 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
             1 => {
                 if state.mode == crate::state::Mode::Shell {
                     let count = state.shell_packages.len();
-                    crate::ui::list::ListWrapper::new_table(&mut state.ui.shell_package_list_state, count).next();
+                    crate::ui::list::ListWrapper::new_table(
+                        &mut state.ui.shell_package_list_state,
+                        count,
+                    )
+                    .next();
                 }
             }
             2 => {
@@ -70,8 +74,7 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
             4 => {
                 if !state.domain.outputs.is_empty() {
                     state.ui.selected_output_index =
-                        (state.ui.selected_output_index + 1)
-                            % state.domain.outputs.len();
+                        (state.ui.selected_output_index + 1) % state.domain.outputs.len();
                     state.fetch_package_details();
                 }
             }
@@ -79,7 +82,8 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
                 if !state.domain.logs.is_empty() {
                     let total_lines =
                         crate::components::command_log::count_lines(&state.domain.logs);
-                    crate::ui::list::ListWrapper::new(&mut state.ui.command_log_state, total_lines).next();
+                    crate::ui::list::ListWrapper::new(&mut state.ui.command_log_state, total_lines)
+                        .next();
                 }
             }
             _ => {}
@@ -88,7 +92,11 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
             1 => {
                 if state.mode == crate::state::Mode::Shell {
                     let count = state.shell_packages.len();
-                    crate::ui::list::ListWrapper::new_table(&mut state.ui.shell_package_list_state, count).previous();
+                    crate::ui::list::ListWrapper::new_table(
+                        &mut state.ui.shell_package_list_state,
+                        count,
+                    )
+                    .previous();
                 }
             }
             2 => {
@@ -106,12 +114,11 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
             }
             4 => {
                 if !state.domain.outputs.is_empty() {
-                    state.ui.selected_output_index =
-                        if state.ui.selected_output_index == 0 {
-                            state.domain.outputs.len() - 1
-                        } else {
-                            state.ui.selected_output_index - 1
-                        };
+                    state.ui.selected_output_index = if state.ui.selected_output_index == 0 {
+                        state.domain.outputs.len() - 1
+                    } else {
+                        state.ui.selected_output_index - 1
+                    };
                     state.fetch_package_details();
                 }
             }
@@ -119,18 +126,21 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
                 if !state.domain.logs.is_empty() {
                     let total_lines =
                         crate::components::command_log::count_lines(&state.domain.logs);
-                    crate::ui::list::ListWrapper::new(&mut state.ui.command_log_state, total_lines).previous();
+                    crate::ui::list::ListWrapper::new(&mut state.ui.command_log_state, total_lines)
+                        .previous();
                 }
             }
             _ => {}
         },
         Action::MovePackageSelectionDown => {
             let count = state.domain.package_info.len();
-            crate::ui::list::ListWrapper::new_table(&mut state.ui.package_table_state, count).next();
+            crate::ui::list::ListWrapper::new_table(&mut state.ui.package_table_state, count)
+                .next();
         }
         Action::MovePackageSelectionUp => {
             let count = state.domain.package_info.len();
-            crate::ui::list::ListWrapper::new_table(&mut state.ui.package_table_state, count).previous();
+            crate::ui::list::ListWrapper::new_table(&mut state.ui.package_table_state, count)
+                .previous();
         }
         Action::MoveInputSelectionDown => {
             let count = state.domain.inputs.len();
@@ -138,7 +148,8 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
         }
         Action::MoveInputSelectionUp => {
             let count = state.domain.inputs.len();
-            crate::ui::list::ListWrapper::new_table(&mut state.ui.input_table_state, count).previous();
+            crate::ui::list::ListWrapper::new_table(&mut state.ui.input_table_state, count)
+                .previous();
         }
         Action::MoveTemplateSelectionDown => {
             let count = state.ui.templates.len();
@@ -223,7 +234,12 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
         Action::MoveVersionSelectionDown => {
             let inputs_len = if state.mode == crate::state::Mode::Flake {
                 if let Some(pkg_name) = &state.ui.selected_package_name {
-                    crate::state::domain::get_available_inputs(&state.domain.inputs, pkg_name, &state.domain.package_search_results).len()
+                    crate::state::domain::get_available_inputs(
+                        &state.domain.inputs,
+                        pkg_name,
+                        &state.domain.package_search_results,
+                    )
+                    .len()
                 } else {
                     0
                 }
@@ -236,7 +252,12 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
         Action::MoveVersionSelectionUp => {
             let inputs_len = if state.mode == crate::state::Mode::Flake {
                 if let Some(pkg_name) = &state.ui.selected_package_name {
-                    crate::state::domain::get_available_inputs(&state.domain.inputs, pkg_name, &state.domain.package_search_results).len()
+                    crate::state::domain::get_available_inputs(
+                        &state.domain.inputs,
+                        pkg_name,
+                        &state.domain.package_search_results,
+                    )
+                    .len()
                 } else {
                     0
                 }
@@ -278,10 +299,11 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
         }
         Action::MoveSuggestionDown => {
             if !state.domain.suggestions.filtered.is_empty() {
-                state.domain.suggestions.selected_index =
-                    (state.domain.suggestions.selected_index + 1)
-                        % state.domain.suggestions.filtered.len();
-                state.domain
+                state.domain.suggestions.selected_index = (state.domain.suggestions.selected_index
+                    + 1)
+                    % state.domain.suggestions.filtered.len();
+                state
+                    .domain
                     .suggestions
                     .list_state
                     .select(Some(state.domain.suggestions.selected_index));
@@ -295,7 +317,8 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
                     } else {
                         state.domain.suggestions.selected_index - 1
                     };
-                state.domain
+                state
+                    .domain
                     .suggestions
                     .list_state
                     .select(Some(state.domain.suggestions.selected_index));
@@ -314,6 +337,23 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
                 state.ui.new_template_description = String::new();
                 state.ui.template_cursor = 0;
             }
+        }
+        Action::ApplyShellTemplate(pkgs) => {
+            for pkg in pkgs {
+                let attribute = pkg.clone();
+                let pkg_to_add = if let Some(hash) = state.domain.system_nixpkgs_hash.as_ref() {
+                    format!("system/{}#{}", hash, attribute)
+                } else {
+                    attribute.clone()
+                };
+
+                if !state.shell_packages.contains(&pkg_to_add) {
+                    crate::log_output("Debug", format!("Adding to shell: {}", pkg_to_add));
+                    state.shell_packages.push(pkg_to_add.clone());
+                    state.fetch_shell_package_metadata(pkg_to_add);
+                }
+            }
+            state.ui.show_templates = false;
         }
         Action::NewTemplateChar(c) => {
             if state.ui.template_cursor == 0 {

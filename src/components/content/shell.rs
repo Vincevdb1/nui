@@ -1,7 +1,7 @@
 use ratatui::{prelude::*, widgets::*};
 
-use std::collections::{HashMap, HashSet};
 use ratatui::widgets::TableState;
+use std::collections::{HashMap, HashSet};
 
 pub struct ShellProps<'a> {
     pub shell_packages: &'a [String],
@@ -50,7 +50,7 @@ pub fn render(props: &mut ShellProps, frame: &mut Frame, area: Rect) {
     for p in props.shell_packages {
         let is_selected = props.selected_shell_packages.contains(p);
         let has_any_selected = !props.selected_shell_packages.is_empty();
-        
+
         let select_marker = if has_any_selected {
             if is_selected {
                 Span::styled(" ● ", Style::default().fg(Color::Yellow))
@@ -69,7 +69,9 @@ pub fn render(props: &mut ShellProps, frame: &mut Frame, area: Rect) {
         if p.contains('@') {
             if let Some((rest, v)) = p.rsplit_once('@') {
                 version = v.to_string();
-                if (rest.starts_with("nixpkgs/") || rest.starts_with("system/")) && rest.contains('#') {
+                if (rest.starts_with("nixpkgs/") || rest.starts_with("system/"))
+                    && rest.contains('#')
+                {
                     if let Some((prefix, suffix)) = rest.split_once('#') {
                         display_name = suffix.to_string();
                         if let Some((_, h)) = prefix.split_once('/') {
@@ -96,7 +98,8 @@ pub fn render(props: &mut ShellProps, frame: &mut Frame, area: Rect) {
 
         rows.push(Row::new(vec![
             Cell::from(Line::from(vec![select_marker])),
-            Cell::from(format!(" {}", display_name)).style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from(format!(" {}", display_name))
+                .style(Style::default().add_modifier(Modifier::BOLD)),
             Cell::from("│"),
             Cell::from(format!(" {}", version)).style(Style::default().fg(Color::Green)),
             Cell::from("│"),

@@ -89,14 +89,17 @@ impl Suggestions {
                                         sorted_branches.len()
                                     ),
                                 );
-                                let _ =
-                                    tx.send(crate::action::Action::SetSuggestions(Ok(sorted_branches)));
+                                let _ = tx.send(crate::action::Action::SetSuggestions(Ok(
+                                    sorted_branches,
+                                )));
                             } else {
                                 crate::log_output(
                                     "GitHub Error",
                                     "Failed to parse GitHub API response for branches",
                                 );
-                                let _ = tx.send(crate::action::Action::SetSuggestions(Err("Failed to parse GitHub API response for branches".to_string())));
+                                let _ = tx.send(crate::action::Action::SetSuggestions(Err(
+                                    "Failed to parse GitHub API response for branches".to_string(),
+                                )));
                             }
                         } else {
                             let err_msg = format!("GitHub API error: {}", response.status());
@@ -105,7 +108,10 @@ impl Suggestions {
                         }
                     }
                     Err(e) => {
-                        let err_msg = format!("Failed to fetch branches: {}. Check your internet connection.", e);
+                        let err_msg = format!(
+                            "Failed to fetch branches: {}. Check your internet connection.",
+                            e
+                        );
                         crate::log_output("GitHub Error", &err_msg);
                         let _ = tx.send(crate::action::Action::SetSuggestions(Err(err_msg)));
                     }

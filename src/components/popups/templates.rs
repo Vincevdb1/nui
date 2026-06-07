@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::Span,
-    widgets::{Block, Borders, Cell, Clear, Row, Table, TableState, Paragraph},
+    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
 };
 
 use crate::components::popups::centered_rect;
@@ -26,10 +26,7 @@ pub fn render(frame: &mut Frame, props: &mut TemplatesProps) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(2)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(1),
-        ])
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(area);
 
     if props.templates.is_empty() {
@@ -42,9 +39,19 @@ pub fn render(frame: &mut Frame, props: &mut TemplatesProps) {
 
         // Header
         rows.push(Row::new(vec![
-            Cell::from(Span::styled(" Template Name", Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan))),
+            Cell::from(Span::styled(
+                " Template Name",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Cyan),
+            )),
             Cell::from(""),
-            Cell::from(Span::styled(" Description", Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan))),
+            Cell::from(Span::styled(
+                " Description",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Cyan),
+            )),
         ]));
 
         // Separator

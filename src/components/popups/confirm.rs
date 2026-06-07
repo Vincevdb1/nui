@@ -7,11 +7,7 @@ use ratatui::{
 
 use crate::components::popups::centered_rect;
 
-pub fn render(
-    frame: &mut Frame,
-    title: &str,
-    message: &str,
-) {
+pub fn render(frame: &mut Frame, title: &str, message: &str) {
     let area = centered_rect(50, 25, frame.area());
     frame.render_widget(Clear, area);
 
@@ -24,10 +20,7 @@ pub fn render(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(2)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(1),
-        ])
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(area);
 
     let p = Paragraph::new(message)

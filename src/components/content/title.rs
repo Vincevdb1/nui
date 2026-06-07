@@ -1,6 +1,12 @@
 use ratatui::{prelude::*, widgets::*};
 
-pub fn render(frame: &mut Frame, area: Rect, _is_focused: bool, nix_search_cli_version: Option<String>, nxv_version: Option<String>) {
+pub fn render(
+    frame: &mut Frame,
+    area: Rect,
+    _is_focused: bool,
+    nix_search_cli_version: Option<String>,
+    nxv_version: Option<String>,
+) {
     let version = env!("CARGO_PKG_VERSION");
     let mut text = Text::from(vec![
         Line::from(r"             _ ").cyan().bold(),
@@ -10,9 +16,14 @@ pub fn render(frame: &mut Frame, area: Rect, _is_focused: bool, nix_search_cli_v
         Line::from(vec![
             Span::styled(
                 r"|_| |_|\__,_|_|",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(format!(" v{}", version), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!(" v{}", version),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]),
     ]);
 
@@ -40,8 +51,14 @@ pub fn render(frame: &mut Frame, area: Rect, _is_focused: bool, nix_search_cli_v
         Line::from(""),
         Line::from("Thank you for using NUI").bold(),
         Line::from(""),
-        Line::from(vec!["Github: ".into(), "https://github.com/Vincevdb1/nui".underlined()]).fg(Color::DarkGray),
-        Line::from(" Vincent Vandebosch").italic().fg(Color::DarkGray),
+        Line::from(vec![
+            "Github: ".into(),
+            "https://github.com/Vincevdb1/nui".underlined(),
+        ])
+        .fg(Color::DarkGray),
+        Line::from(" Vincent Vandebosch")
+            .italic()
+            .fg(Color::DarkGray),
         Line::from("󰿃 MIT License").italic().fg(Color::DarkGray),
     ]);
 

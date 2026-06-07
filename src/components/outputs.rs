@@ -7,19 +7,20 @@ pub struct OutputsProps<'a> {
     pub selected_index: usize,
 }
 
-pub fn render(
-    props: &OutputsProps,
-    frame: &mut Frame,
-    area: Rect,
-) {
-    let list_items: Vec<ListItem> = props.outputs
+pub fn render(props: &OutputsProps, frame: &mut Frame, area: Rect) {
+    let list_items: Vec<ListItem> = props
+        .outputs
         .iter()
         .enumerate()
         .map(|(i, output)| {
             let (style, prefix_style) = if i == props.selected_index {
                 (
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::BOLD),
                 )
             } else {
                 (Style::default(), Style::default().fg(Color::DarkGray))

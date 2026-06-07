@@ -1,8 +1,8 @@
 use ratatui::{prelude::*, widgets::*};
 use throbber_widgets_tui::Throbber;
 
-use std::collections::{HashMap, HashSet};
 use ratatui::widgets::TableState;
+use std::collections::{HashMap, HashSet};
 use throbber_widgets_tui::ThrobberState;
 
 pub struct PackagesProps<'a> {
@@ -24,7 +24,11 @@ pub fn render(props: &mut PackagesProps, frame: &mut Frame, area: Rect) {
             description: description.clone(),
             version: Some(version.clone()),
             is_unfree: *is_unfree,
-            source_input: if source_input.is_empty() { None } else { Some(source_input.clone()) },
+            source_input: if source_input.is_empty() {
+                None
+            } else {
+                Some(source_input.clone())
+            },
         });
     }
 
@@ -57,11 +61,7 @@ pub fn render(props: &mut PackagesProps, frame: &mut Frame, area: Rect) {
                 .label(label)
                 .throbber_set(throbber_widgets_tui::BRAILLE_SIX_DOUBLE);
 
-            frame.render_stateful_widget(
-                throbber,
-                horizontal_chunks[1],
-                props.throbber_state,
-            );
+            frame.render_stateful_widget(throbber, horizontal_chunks[1], props.throbber_state);
         } else {
             let p = Paragraph::new("No packages found in selected configuration.")
                 .alignment(Alignment::Center);
@@ -84,7 +84,7 @@ pub fn render(props: &mut PackagesProps, frame: &mut Frame, area: Rect) {
     for pkg in &all_packages {
         let is_selected = props.selected_packages.contains(&pkg.name);
         let has_any_selected = !props.selected_packages.is_empty();
-        
+
         let select_marker = if has_any_selected {
             if is_selected {
                 Span::styled(" ● ", Style::default().fg(Color::Yellow))
@@ -101,25 +101,30 @@ pub fn render(props: &mut PackagesProps, frame: &mut Frame, area: Rect) {
             Span::raw("")
         };
 
-        let pin_marker = if props.pinned_packages.contains(&pkg.name) || pkg.name.starts_with("inputs.") {
-            Span::styled(" 󰐃", Style::default().fg(Color::Cyan))
-        } else {
-            Span::raw("")
-        };
+        let pin_marker =
+            if props.pinned_packages.contains(&pkg.name) || pkg.name.starts_with("inputs.") {
+                Span::styled(" 󰐃", Style::default().fg(Color::Cyan))
+            } else {
+                Span::raw("")
+            };
 
         let current_version = pkg.version.clone().unwrap_or_default();
-        let latest = props.package_updates.get(&pkg.name)
-            .or_else(|| {
-                props.package_updates.iter()
-                    .find(|(attr, _)| attr.ends_with(&format!(".{}", pkg.name)))
-                    .map(|(_, v)| v)
-            });
+        let latest = props.package_updates.get(&pkg.name).or_else(|| {
+            props
+                .package_updates
+                .iter()
+                .find(|(attr, _)| attr.ends_with(&format!(".{}", pkg.name)))
+                .map(|(_, v)| v)
+        });
 
         let version_line = if let Some(latest) = latest {
             if latest != &current_version {
                 Line::from(vec![
                     Span::raw(format!(" {}", current_version)),
-                    Span::styled(format!(" (󰚰 {})", latest), Style::default().fg(Color::Yellow)),
+                    Span::styled(
+                        format!(" (󰚰 {})", latest),
+                        Style::default().fg(Color::Yellow),
+                    ),
                 ])
             } else {
                 Line::from(format!(" {}", current_version))
@@ -142,7 +147,8 @@ pub fn render(props: &mut PackagesProps, frame: &mut Frame, area: Rect) {
         ]));
     }
 
-    let max_name_len = all_packages.iter()
+    let max_name_len = all_packages
+        .iter()
         .map(|p| p.name.len() + (if p.is_unfree { 2 } else { 0 }))
         .max()
         .unwrap_or(20) as u16;
@@ -183,8 +189,8 @@ pub fn render(props: &mut PackagesProps, frame: &mut Frame, area: Rect) {
         .begin_symbol(Some("▲"))
         .end_symbol(Some("▼"));
 
-    let mut scrollbar_state = ScrollbarState::new(rows_count)
-        .position(props.package_table_state.selected().unwrap_or(0));
+    let mut scrollbar_state =
+        ScrollbarState::new(rows_count).position(props.package_table_state.selected().unwrap_or(0));
 
     frame.render_stateful_widget(
         scrollbar,

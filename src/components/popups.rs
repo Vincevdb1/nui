@@ -1,9 +1,9 @@
 pub mod add_input;
 pub mod add_package;
-pub mod help;
-pub mod templates;
-pub mod save_shell_template;
 pub mod confirm;
+pub mod help;
+pub mod save_shell_template;
+pub mod templates;
 
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 

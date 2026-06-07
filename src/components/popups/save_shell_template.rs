@@ -7,12 +7,7 @@ use ratatui::{
 
 use crate::components::popups::centered_rect;
 
-pub fn render(
-    frame: &mut Frame,
-    filename: &str,
-    description: &str,
-    cursor: usize,
-) {
+pub fn render(frame: &mut Frame, filename: &str, description: &str, cursor: usize) {
     let area = centered_rect(60, 40, frame.area());
     frame.render_widget(Clear, area);
 

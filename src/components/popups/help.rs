@@ -81,7 +81,11 @@ pub fn render(frame: &mut Frame) {
         .collect();
 
     let table = Table::new(rows, [Constraint::Length(10), Constraint::Min(20)])
-        .block(Block::default().title(" Keybindings ").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(" Keybindings ")
+                .borders(Borders::ALL),
+        )
         .column_spacing(2);
     frame.render_widget(table, chunks[1]);
 
