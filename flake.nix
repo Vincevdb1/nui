@@ -4,6 +4,7 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-25.11";
+    nxv.url = "github:utensils/nxv";
   };
 
   outputs =
@@ -11,6 +12,7 @@
       self,
       nixpkgs,
       nixpkgs-stable,
+      nxv
     }:
     let
       system = "x86_64-linux";
@@ -41,7 +43,7 @@
             --prefix PATH : ${
               pkgs.lib.makeBinPath [
                 pkgs.nix-search-cli
-                pkgs.nxv
+                nxv.packages.${system}.default
               ]
             }
         '';
@@ -58,7 +60,7 @@
           clippy
           rustfmt
           nix-search-cli
-          nxv
+          nxv.packages.${system}.default
         ];
 
         shellHook = "";
