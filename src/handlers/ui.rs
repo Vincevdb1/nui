@@ -187,13 +187,7 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
             }
         }
         Action::OpenAddPackage => {
-            state.cancel_package_search();
-            state.ui.is_adding_package = true;
-            state.ui.is_selecting_version = false;
-            state.ui.package_search_query.clear();
-            state.ui.last_search_query.clear();
-            state.domain.package_search_results.clear();
-            state.domain.package_versions.clear();
+            state.open_package_search();
         }
         Action::OpenAddInput => {
             state.ui.is_adding_input = true;

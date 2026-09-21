@@ -74,6 +74,9 @@ impl AppState {
 
         if app.mode == Mode::Shell {
             app.ui.selected_index = 1;
+            if app.shell_packages.is_empty() {
+                app.open_package_search();
+            }
         }
 
         if app.mode == Mode::Flake {
@@ -133,6 +136,16 @@ impl AppState {
         self.ui.package_search_id += 1;
         self.ui.is_searching_packages = false;
         crate::state::domain::cancel_registered(&self.nix_service.search_children());
+    }
+
+    pub fn open_package_search(&mut self) {
+        self.cancel_package_search();
+        self.ui.is_adding_package = true;
+        self.ui.is_selecting_version = false;
+        self.ui.package_search_query.clear();
+        self.ui.last_search_query.clear();
+        self.domain.package_search_results.clear();
+        self.domain.package_versions.clear();
     }
 
     pub fn perform_package_search(&mut self) {

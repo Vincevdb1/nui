@@ -14,6 +14,9 @@ pub fn handle_nix_action(state: &mut AppState, context: &Context, action: Action
                 state.domain.nix_files = Vec::new();
                 state.domain.inputs = Vec::new();
                 state.domain.outputs = Vec::new();
+                if state.shell_packages.is_empty() {
+                    state.open_package_search();
+                }
             } else {
                 state.mode = Mode::Flake;
                 state.ui.selected_index = 1;
