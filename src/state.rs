@@ -129,6 +129,12 @@ impl AppState {
         }
     }
 
+    pub fn cancel_package_search(&mut self) {
+        self.ui.package_search_id += 1;
+        self.ui.is_searching_packages = false;
+        crate::state::domain::cancel_registered(&self.nix_service.search_children());
+    }
+
     pub fn perform_package_search(&mut self) {
         if self.ui.package_search_query.is_empty() {
             self.domain.package_search_results.clear();
@@ -137,6 +143,8 @@ impl AppState {
 
         self.ui.is_searching_packages = true;
         self.ui.package_search_error = None;
+        self.ui.package_search_id += 1;
+        let search_id = self.ui.package_search_id;
         let query = self.ui.package_search_query.clone();
 
         let mut search_targets: Vec<String> = if self.mode == Mode::Shell {
@@ -164,6 +172,7 @@ impl AppState {
         self.domain.searched_channels = search_targets;
 
         self.nix_service.perform_package_search(
+            search_id,
             query,
             self.mode.clone(),
             self.domain.inputs.clone(),

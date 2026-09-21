@@ -171,13 +171,19 @@ fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<Option<Vec<String>>> {
     while !app.should_quit {
         terminal.draw(|frame| ui::render(app, frame))?;
 
-        if event::poll(std::time::Duration::from_millis(16))?
-            && let Some(action) = ui::events::map_event(app, event::read()?)
-        {
-            if let Action::StartShell(ref pkgs) = action {
-                shell_packages = Some(pkgs.clone());
+        // Drain every keystroke that is already queued before rendering again, so a burst
+        // of typing is applied in a single frame instead of one character per redraw.
+        if event::poll(std::time::Duration::from_millis(16))? {
+            let mut budget = 64;
+            while budget > 0 && event::poll(std::time::Duration::ZERO)? {
+                budget -= 1;
+                if let Some(action) = ui::events::map_event(app, event::read()?) {
+                    if let Action::StartShell(ref pkgs) = action {
+                        shell_packages = Some(pkgs.clone());
+                    }
+                    app.update(action);
+                }
             }
-            app.update(action);
         }
         app.update(Action::Tick);
     }

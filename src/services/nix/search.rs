@@ -6,6 +6,8 @@ use crate::state::{
     Mode,
     domain::{self, ChannelVersion, SearchResult},
 };
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashMap;
 
 impl NixService {
@@ -26,6 +28,7 @@ impl NixService {
 
     pub fn perform_package_search(
         &self,
+        search_id: usize,
         query: String,
         mode: Mode,
         inputs: Vec<Input>,
@@ -33,6 +36,13 @@ impl NixService {
         system_nixpkgs_version: Option<String>,
     ) {
         let tx = self.tx.clone();
+
+        // Kill whatever the previous query is still running before starting this one.
+        self.current_search_id.store(search_id, Ordering::SeqCst);
+        domain::cancel_registered(&self.search_children);
+        let reg = Arc::clone(&self.search_children);
+        let current: Arc<AtomicUsize> = Arc::clone(&self.current_search_id);
+        let is_current = move || current.load(Ordering::SeqCst) == search_id;
 
         let mut search_targets: Vec<String> = if mode == Mode::Shell {
             let mut targets = vec!["nxv".to_string()];
@@ -81,15 +91,17 @@ impl NixService {
                 for target in &search_targets {
                     if target == "nxv" {
                         let q = query.clone();
+                        let r = Arc::clone(&reg);
                         threads.push(std::thread::spawn(move || {
-                            let res = domain::nxv_search(q);
+                            let res = domain::nxv_search(q, Some(&r));
                             ("nxv".to_string(), res)
                         }));
                     } else {
                         let q = query.clone();
                         let t = target.clone();
+                        let r = Arc::clone(&reg);
                         threads.push(std::thread::spawn(move || {
-                            let res = domain::nix_search_cli(q, t.clone());
+                            let res = domain::nix_search_cli(q, t.clone(), Some(&r));
                             (t, res)
                         }));
                     }
@@ -156,7 +168,12 @@ impl NixService {
                             }
                         }
                         Ok((source, Err(e))) => {
-                            crate::log_output(format!("Search Error ({})", source), e.clone());
+                            if is_current() {
+                                crate::log_output(
+                                    format!("Search Error ({})", source),
+                                    e.clone(),
+                                );
+                            }
                             if source == "nxv" {
                                 nxv_search_err = Some(e);
                             } else {
@@ -180,7 +197,7 @@ impl NixService {
                     .map(|r| r.name.clone())
                     .collect();
 
-                let system_versions = domain::fetch_system_versions_batch(attrs_to_fetch);
+                let system_versions = domain::fetch_system_versions_batch(attrs_to_fetch, Some(&reg));
 
                 for res in final_results.iter_mut().take(50) {
                     if let Some(sys_version) = system_versions.get(&res.name) {
@@ -204,23 +221,24 @@ impl NixService {
 
                 if final_results.is_empty() {
                     if let Some(e) = nix_search_err {
-                        let _ = tx.send(Action::SetPackageSearchResults(Err(e)));
+                        let _ = tx.send(Action::SetPackageSearchResults(search_id, Err(e)));
                         return;
                     }
                     if let Some(e) = nxv_search_err {
-                        let _ = tx.send(Action::SetPackageSearchResults(Err(e)));
+                        let _ = tx.send(Action::SetPackageSearchResults(search_id, Err(e)));
                         return;
                     }
                 }
-                let _ = tx.send(Action::SetPackageSearchResults(Ok(final_results)));
+                let _ = tx.send(Action::SetPackageSearchResults(search_id, Ok(final_results)));
                 return;
             } else {
                 let mut threads = Vec::new();
                 for target in search_targets {
                     let q = query.clone();
                     let t = target.clone();
+                    let r = Arc::clone(&reg);
                     threads.push(std::thread::spawn(move || {
-                        let res = domain::nix_search_cli(q, t.clone());
+                        let res = domain::nix_search_cli(q, t.clone(), Some(&r));
                         (t, res)
                     }));
                 }
@@ -229,15 +247,17 @@ impl NixService {
                     let q = query.clone();
                     let input_name = input.name.clone();
                     let input_url = input.url.clone();
+                    let r = Arc::clone(&reg);
                     threads.push(std::thread::spawn(move || {
-                        let res = domain::nix_search_flake(input_url, q);
+                        let res = domain::nix_search_flake(input_url, q, Some(&r));
                         (input_name, res)
                     }));
                 }
 
                 let q = query.clone();
+                let r = Arc::clone(&reg);
                 threads.push(std::thread::spawn(move || {
-                    let res = domain::nix_search_flake(".".to_string(), q);
+                    let res = domain::nix_search_flake(".".to_string(), q, Some(&r));
                     ("self".to_string(), res)
                 }));
 
@@ -313,7 +333,12 @@ impl NixService {
                             }
                         }
                         Ok((source, Err(e))) => {
-                            crate::log_output(format!("Search Error ({})", source), e.clone());
+                            if is_current() {
+                                crate::log_output(
+                                    format!("Search Error ({})", source),
+                                    e.clone(),
+                                );
+                            }
                             search_errors.push(e);
                         }
                         Err(_) => {
@@ -323,7 +348,7 @@ impl NixService {
                 }
 
                 if results_map.is_empty() && !search_errors.is_empty() {
-                    let _ = tx.send(Action::SetPackageSearchResults(Err(
+                    let _ = tx.send(Action::SetPackageSearchResults(search_id, Err(
                         search_errors[0].clone()
                     )));
                     return;
@@ -332,7 +357,7 @@ impl NixService {
 
             let mut final_results: Vec<SearchResult> = results_map.into_values().collect();
             crate::services::nix::search_sort::sort_search_results(&mut final_results, &query);
-            let _ = tx.send(Action::SetPackageSearchResults(Ok(final_results)));
+            let _ = tx.send(Action::SetPackageSearchResults(search_id, Ok(final_results)));
         });
     }
 
@@ -349,7 +374,7 @@ impl NixService {
 
                 let tx = tx.clone();
                 let pkg = pkg_name.clone();
-                std::thread::spawn(move || match domain::nix_search_cli(pkg.clone(), channel) {
+                std::thread::spawn(move || match domain::nix_search_cli(pkg.clone(), channel, None) {
                     Ok(results) => {
                         let latest = results.iter().find(|p| p.attribute == pkg).or_else(|| {
                             results

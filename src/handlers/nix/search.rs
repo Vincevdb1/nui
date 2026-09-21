@@ -108,7 +108,11 @@ pub fn handle_search_action(state: &mut AppState, _context: &Context, action: Ac
                 }
             }
         }
-        Action::SetPackageSearchResults(res) => {
+        Action::SetPackageSearchResults(search_id, res) => {
+            // A superseded search may still finish; its results must not clobber newer state.
+            if search_id != state.ui.package_search_id {
+                return;
+            }
             state.ui.is_searching_packages = false;
             match res {
                 Ok(results) => {
@@ -127,6 +131,7 @@ pub fn handle_search_action(state: &mut AppState, _context: &Context, action: Ac
                                 .collect::<Vec<_>>();
                             let inputs = state.domain.inputs.clone();
                             let tx = state.tx.clone();
+                            let reg = state.nix_service.search_children();
 
                             std::thread::spawn(move || {
                                 for result in top_results {
@@ -140,10 +145,12 @@ pub fn handle_search_action(state: &mut AppState, _context: &Context, action: Ac
                                                     domain::fetch_accurate_version(
                                                         rev.clone(),
                                                         result.name.clone(),
+                                                        Some(&reg),
                                                     )
                                                 {
                                                     let channel = domain::extract_channel(input);
                                                     let _ = tx.send(Action::SetLockedVersion(
+                                                        search_id,
                                                         result.name.clone(),
                                                         channel,
                                                         version,
@@ -183,7 +190,10 @@ pub fn handle_search_action(state: &mut AppState, _context: &Context, action: Ac
                 }
             }
         }
-        Action::SetLockedVersion(attribute, channel, version) => {
+        Action::SetLockedVersion(search_id, attribute, channel, version) => {
+            if search_id != state.ui.package_search_id {
+                return;
+            }
             for result in &mut state.domain.package_search_results {
                 if result.name == attribute {
                     for cv in &mut result.versions {

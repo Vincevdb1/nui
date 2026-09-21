@@ -66,9 +66,9 @@ fn is_search_action(action: &Action) -> bool {
         action,
         Action::PackageSearchSubmitVersions
             | Action::PackageSearchSubmitDirect
-            | Action::SetPackageSearchResults(_)
+            | Action::SetPackageSearchResults(..)
             | Action::UpdatePackageVersion(_, _)
-            | Action::SetLockedVersion(_, _, _)
+            | Action::SetLockedVersion(..)
             | Action::FetchVersions(_)
             | Action::FetchShellPackageVersions(_, _)
             | Action::SetVersions(_)

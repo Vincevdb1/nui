@@ -3,6 +3,72 @@ use crate::context::NixFile;
 use crate::nix::{Input, Output, suggestions::Suggestions};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::io::Read;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
+
+/// One spawned child process, shared between the thread waiting on it and whoever may
+/// cancel it. `None` once the child has been taken for reaping.
+pub type ChildSlot = Arc<Mutex<Option<Child>>>;
+
+/// All child processes belonging to the current search generation.
+pub type ChildRegistry = Arc<Mutex<Vec<ChildSlot>>>;
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Kill and reap every child registered so far, then empty the registry.
+pub fn cancel_registered(reg: &ChildRegistry) {
+    let slots: Vec<ChildSlot> = std::mem::take(&mut *lock(reg));
+    for slot in slots {
+        let mut guard = lock(&slot);
+        if let Some(child) = guard.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+/// Run `cmd` capturing stdout, registering the child so a newer search can kill it.
+///
+/// stderr is discarded rather than captured: every caller ignores it, and it must never be
+/// inherited or it would corrupt the TUI. Discarding it also removes the pipe-fill deadlock
+/// that reading two pipes sequentially on one thread would risk.
+fn run_registered(
+    mut cmd: Command,
+    reg: Option<&ChildRegistry>,
+) -> std::io::Result<std::process::Output> {
+    cmd.stdout(Stdio::piped()).stderr(Stdio::null());
+    let mut child = cmd.spawn()?;
+
+    let Some(reg) = reg else {
+        return child.wait_with_output();
+    };
+
+    let mut pipe = child.stdout.take();
+    let slot: ChildSlot = Arc::new(Mutex::new(Some(child)));
+    lock(reg).push(Arc::clone(&slot));
+
+    let mut stdout = Vec::new();
+    if let Some(p) = pipe.as_mut() {
+        let _ = p.read_to_end(&mut stdout);
+    }
+    drop(pipe);
+
+    let mut guard = lock(&slot);
+    let status = match guard.take() {
+        Some(mut child) => child.wait()?,
+        // Already reaped by cancel_registered.
+        None => return Err(std::io::Error::other("search cancelled")),
+    };
+
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr: Vec::new(),
+    })
+}
 
 #[derive(Debug, Deserialize)]
 pub struct SearchPackage {
@@ -59,7 +125,11 @@ pub struct SearchResult {
     pub hash: Option<String>,
 }
 
-pub fn nix_search_cli(query: String, channel: String) -> Result<Vec<SearchPackage>, String> {
+pub fn nix_search_cli(
+    query: String,
+    channel: String,
+    reg: Option<&ChildRegistry>,
+) -> Result<Vec<SearchPackage>, String> {
     let mapped_channel = if channel.contains("unstable") {
         "unstable".to_string()
     } else {
@@ -91,14 +161,9 @@ pub fn nix_search_cli(query: String, channel: String) -> Result<Vec<SearchPackag
         }
     };
 
-    let output = std::process::Command::new("nix-search")
-        .args([
-            "--json",
-            "--channel",
-            &mapped_channel,
-            &query,
-        ])
-        .output()
+    let mut cmd = Command::new("nix-search");
+    cmd.args(["--json", "--channel", &mapped_channel, &query]);
+    let output = run_registered(cmd, reg)
         .map_err(|e| format!("Failed to execute nix-search: {}. Make sure it's installed and you have an internet connection.", e))?;
 
     if !output.status.success() {
@@ -143,13 +208,17 @@ struct NixSearchPackage {
 #[allow(dead_code)]
 pub fn nix_search(query: String, rev: String) -> Result<Vec<SearchPackage>, String> {
     let flake_url = format!("github:NixOS/nixpkgs/{}", rev);
-    nix_search_flake(flake_url, query)
+    nix_search_flake(flake_url, query, None)
 }
 
-pub fn nix_search_flake(flake_url: String, query: String) -> Result<Vec<SearchPackage>, String> {
-    let output = std::process::Command::new("nix")
-        .args(["search", "--json", &flake_url, &query])
-        .output()
+pub fn nix_search_flake(
+    flake_url: String,
+    query: String,
+    reg: Option<&ChildRegistry>,
+) -> Result<Vec<SearchPackage>, String> {
+    let mut cmd = Command::new("nix");
+    cmd.args(["search", "--json", &flake_url, &query]);
+    let output = run_registered(cmd, reg)
         .map_err(|e| format!("Failed to execute nix search: {}. Make sure nix is installed and you have an internet connection.", e))?;
 
     if !output.status.success() {
@@ -189,10 +258,13 @@ pub struct NXVPackage {
     pub last_commit_date: String,
 }
 
-pub fn nxv_search(query: String) -> Result<Vec<SearchPackage>, String> {
-    let output = std::process::Command::new("nxv")
-        .args(["search", "-f", "json", "--sort", "date", &query])
-        .output()
+pub fn nxv_search(
+    query: String,
+    reg: Option<&ChildRegistry>,
+) -> Result<Vec<SearchPackage>, String> {
+    let mut cmd = Command::new("nxv");
+    cmd.args(["search", "-f", "json", "--sort", "date", &query]);
+    let output = run_registered(cmd, reg)
         .map_err(|e| format!("Failed to execute nxv: {}. Make sure nxv is installed and you have an internet connection.", e))?;
 
     if !output.status.success() {
@@ -254,7 +326,10 @@ pub fn extract_upstream_channel(input: &Input) -> String {
     "nixos-unstable".to_string()
 }
 
-pub fn fetch_system_versions_batch(attrs: Vec<String>) -> HashMap<String, String> {
+pub fn fetch_system_versions_batch(
+    attrs: Vec<String>,
+    reg: Option<&ChildRegistry>,
+) -> HashMap<String, String> {
     if attrs.is_empty() {
         return HashMap::new();
     }
@@ -276,9 +351,9 @@ pub fn fetch_system_versions_batch(attrs: Vec<String>) -> HashMap<String, String
     }
     expr.push('}');
 
-    let output = std::process::Command::new("nix")
-        .args(["eval", "--json", "--impure", "--expr", &expr])
-        .output();
+    let mut cmd = Command::new("nix");
+    cmd.args(["eval", "--json", "--impure", "--expr", &expr]);
+    let output = run_registered(cmd, reg);
 
     if let Ok(output) = output {
         if output.status.success() {
@@ -289,12 +364,15 @@ pub fn fetch_system_versions_batch(attrs: Vec<String>) -> HashMap<String, String
     HashMap::new()
 }
 
-pub fn fetch_accurate_version(rev: String, attribute: String) -> Option<String> {
+pub fn fetch_accurate_version(
+    rev: String,
+    attribute: String,
+    reg: Option<&ChildRegistry>,
+) -> Option<String> {
     let flake_url = format!("github:NixOS/nixpkgs/{}#{}", rev, attribute);
-    let output = std::process::Command::new("nix")
-        .args(["eval", "--json", &format!("{}.version", flake_url)])
-        .output()
-        .ok()?;
+    let mut cmd = Command::new("nix");
+    cmd.args(["eval", "--json", &format!("{}.version", flake_url)]);
+    let output = run_registered(cmd, reg).ok()?;
 
     if !output.status.success() {
         return None;
@@ -422,4 +500,54 @@ pub struct DomainData {
     pub system_nixpkgs_hash: Option<String>,
     pub system_nixpkgs_path: Option<String>,
     pub nxv_update_progress: Option<String>,
+}
+
+#[cfg(test)]
+mod cancel_tests {
+    use super::*;
+    use std::time::Instant;
+
+    /// A registered child must be killed and reaped when a newer search cancels it, and the
+    /// waiting caller must return promptly instead of blocking for the child's full runtime.
+    #[test]
+    fn cancel_registered_kills_in_flight_child() {
+        let reg = ChildRegistry::default();
+        let reg_worker = Arc::clone(&reg);
+
+        let started = Instant::now();
+        let worker = std::thread::spawn(move || {
+            let mut cmd = Command::new("sleep");
+            cmd.arg("30");
+            run_registered(cmd, Some(&reg_worker))
+        });
+
+        // Wait until the child is actually registered, then cancel it.
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while lock(&reg).is_empty() {
+            assert!(Instant::now() < deadline, "child was never registered");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        cancel_registered(&reg);
+
+        let result = worker.join().expect("worker panicked");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "cancelled child was not killed promptly"
+        );
+        match result {
+            Ok(output) => assert!(!output.status.success(), "killed child reported success"),
+            Err(e) => assert_eq!(e.to_string(), "search cancelled"),
+        }
+        assert!(lock(&reg).is_empty(), "registry was not drained");
+    }
+
+    /// Without a registry the runner still behaves like `Command::output()`.
+    #[test]
+    fn run_registered_without_registry_captures_stdout() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("hello");
+        let out = run_registered(cmd, None).expect("echo failed to run");
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hello");
+    }
 }

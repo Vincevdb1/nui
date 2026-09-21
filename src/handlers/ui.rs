@@ -12,11 +12,14 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
                 && state.ui.last_search_time.elapsed() > std::time::Duration::from_millis(300)
                 && state.ui.package_search_query != state.ui.last_search_query
             {
-                state.ui.last_search_query = state.ui.package_search_query.clone();
                 if state.ui.package_search_query.is_empty() {
+                    state.ui.last_search_query.clear();
                     state.domain.package_search_results.clear();
                     state.ui.package_search_state.select(None);
-                } else if !state.ui.is_searching_packages {
+                } else {
+                    // Only record the query as searched once a search is actually launched,
+                    // otherwise a query typed during an in-flight search is silently dropped.
+                    state.ui.last_search_query = state.ui.package_search_query.clone();
                     state.perform_package_search();
                 }
             }
@@ -184,9 +187,11 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
             }
         }
         Action::OpenAddPackage => {
+            state.cancel_package_search();
             state.ui.is_adding_package = true;
             state.ui.is_selecting_version = false;
             state.ui.package_search_query.clear();
+            state.ui.last_search_query.clear();
             state.domain.package_search_results.clear();
             state.domain.package_versions.clear();
         }
@@ -198,6 +203,9 @@ pub fn handle_ui_action(state: &mut AppState, _context: &Context, action: Action
             state.start_fetching_suggestions();
         }
         Action::ClosePopup => {
+            if state.ui.is_adding_package {
+                state.cancel_package_search();
+            }
             state.ui.is_adding_package = false;
             state.ui.is_adding_input = false;
             state.ui.is_selecting_version = false;

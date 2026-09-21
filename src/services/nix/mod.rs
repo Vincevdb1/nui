@@ -1,6 +1,9 @@
 use crate::action::Action;
 use crate::nix::parser::{extract_inputs, fetch_outputs};
 use crate::nix::{Input, Output};
+use crate::state::domain::ChildRegistry;
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc::Sender;
 
 pub mod edit;
@@ -11,11 +14,31 @@ pub mod templates;
 /// NixService coordinates domain modules and handles file IO and background threading.
 pub struct NixService {
     pub(crate) tx: Sender<Action>,
+    /// Child processes of the in-flight package search, so a newer query can kill them.
+    pub(crate) search_children: ChildRegistry,
+    /// Id of the newest package search; worker threads compare against it before reporting.
+    pub(crate) current_search_id: Arc<AtomicUsize>,
 }
 
 impl NixService {
     pub fn new(tx: Sender<Action>) -> Self {
-        Self { tx }
+        Self {
+            tx,
+            search_children: ChildRegistry::default(),
+            current_search_id: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// Registry of the current search's child processes, for cancelling from elsewhere.
+    pub fn search_children(&self) -> ChildRegistry {
+        Arc::clone(&self.search_children)
+    }
+
+    /// True while `search_id` is still the newest search that was started.
+    pub fn is_current_search(&self, search_id: usize) -> bool {
+        self.current_search_id
+            .load(std::sync::atomic::Ordering::SeqCst)
+            == search_id
     }
 
     pub fn get_initial_context(&self) -> (Vec<crate::context::NixFile>, Vec<Input>, Vec<Output>) {

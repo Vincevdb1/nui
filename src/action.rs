@@ -44,7 +44,7 @@ pub enum Action {
     // Background Task Results
     Log(LogEntry),
     SetSuggestions(Result<Vec<(String, String)>, String>),
-    SetPackageSearchResults(Result<Vec<SearchResult>, String>),
+    SetPackageSearchResults(usize, Result<Vec<SearchResult>, String>),
     SetPackageDetails(
         usize,
         Result<HashMap<String, (String, String, bool, String)>, String>,
@@ -53,7 +53,7 @@ pub enum Action {
     SetContextData(Vec<Input>, Vec<Output>),
     SetVersions(Result<Vec<VersionInfo>, String>),
     UpdatePackageVersion(String, String),
-    SetLockedVersion(String, String, String), // attribute, channel, version
+    SetLockedVersion(usize, String, String, String), // search_id, attribute, channel, version
 
     // Context / State Refresh
     RefreshContext,
