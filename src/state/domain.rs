@@ -245,14 +245,34 @@ pub fn nix_search_flake(
         .collect())
 }
 
+fn string_or_seq<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrSeq {
+        Seq(Vec<String>),
+        Str(String),
+    }
+
+    Ok(match Option::<StringOrSeq>::deserialize(deserializer)? {
+        Some(StringOrSeq::Seq(v)) => Some(v),
+        Some(StringOrSeq::Str(s)) => serde_json::from_str::<Vec<String>>(&s).ok(),
+        None => None,
+    })
+}
+
 #[derive(Debug, Deserialize)]
 pub struct NXVPackage {
     pub name: String,
     pub version: String,
     pub attribute_path: String,
     pub description: Option<String>,
-    pub platforms: Option<String>,
-    pub license: Option<String>,
+    #[serde(default, deserialize_with = "string_or_seq")]
+    pub platforms: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "string_or_seq")]
+    pub license: Option<Vec<String>>,
     pub last_commit_hash: String,
     #[allow(dead_code)]
     pub last_commit_date: String,
@@ -282,20 +302,13 @@ pub fn nxv_search(
         .into_iter()
         .filter(|p| seen.insert(p.attribute_path.clone()))
         .map(|p| {
-            let platforms = p
-                .platforms
-                .and_then(|ps| serde_json::from_str::<Vec<String>>(&ps).ok());
-            let license_set = p
-                .license
-                .and_then(|ls| serde_json::from_str::<Vec<String>>(&ls).ok());
-
             SearchPackage {
                 attribute: p.attribute_path,
                 pname: Some(p.name),
                 version: Some(p.version),
                 description: p.description,
-                platforms,
-                license_set,
+                platforms: p.platforms,
+                license_set: p.license,
                 hash: Some(p.last_commit_hash),
             }
         })
@@ -396,7 +409,8 @@ struct NXVResult {
     version: String,
     last_commit_hash: String,
     last_commit_date: String,
-    license: Option<String>,
+    #[serde(default, deserialize_with = "string_or_seq")]
+    license: Option<Vec<String>>,
 }
 
 pub fn fetch_package_versions(pkg: &str) -> Result<Vec<VersionInfo>, String> {
@@ -421,7 +435,7 @@ pub fn fetch_package_versions(pkg: &str) -> Result<Vec<VersionInfo>, String> {
             let is_unfree = r
                 .license
                 .as_ref()
-                .map(|l| l.to_lowercase().contains("unfree"))
+                .map(|ls| ls.iter().any(|l| l.to_lowercase().contains("unfree")))
                 .unwrap_or(false);
             VersionInfo {
                 version: r.version,
@@ -549,5 +563,78 @@ mod cancel_tests {
         let out = run_registered(cmd, None).expect("echo failed to run");
         assert!(out.status.success());
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hello");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NXV_SAMPLE: &str = r#"[
+      {
+        "id": 1769790,
+        "name": "ripgrep",
+        "version": "15.2.0",
+        "first_commit_hash": "d4a57f16",
+        "first_commit_date": "2026-07-16T00:20:00Z",
+        "last_commit_hash": "c8007378",
+        "last_commit_date": "2026-09-21T09:37:33Z",
+        "attribute_path": "ripgrep",
+        "description": "Fast grep",
+        "license": ["Unlicense", "MIT"],
+        "homepage": "https://github.com/BurntSushi/ripgrep",
+        "maintainers": ["globin"],
+        "platforms": ["x86_64-linux", "aarch64-darwin"],
+        "source_path": "pkgs/by-name/ri/ripgrep/package.nix",
+        "known_vulnerabilities": null
+      }
+    ]"#;
+
+    // Older nxv releases emitted these fields as stringified JSON arrays.
+    const NXV_LEGACY_SAMPLE: &str = r#"[
+      {
+        "name": "steam",
+        "version": "1.0",
+        "attribute_path": "steam",
+        "description": null,
+        "license": "[\"unfreeRedistributable\"]",
+        "platforms": "[\"x86_64-linux\"]",
+        "last_commit_hash": "abc",
+        "last_commit_date": "2026-09-21T09:37:33Z"
+      }
+    ]"#;
+
+    #[test]
+    fn parses_nxv_package_list() {
+        let pkgs: Vec<NXVPackage> = serde_json::from_str(NXV_SAMPLE).expect("parse NXVPackage");
+        assert_eq!(pkgs[0].attribute_path, "ripgrep");
+        assert_eq!(
+            pkgs[0].license.as_deref(),
+            Some(&["Unlicense".to_string(), "MIT".to_string()][..])
+        );
+        assert_eq!(
+            pkgs[0].platforms.as_deref(),
+            Some(&["x86_64-linux".to_string(), "aarch64-darwin".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn parses_nxv_version_list() {
+        let results: Vec<NXVResult> = serde_json::from_str(NXV_SAMPLE).expect("parse NXVResult");
+        assert_eq!(results[0].version, "15.2.0");
+        assert_eq!(results[0].last_commit_hash, "c8007378");
+    }
+
+    #[test]
+    fn parses_legacy_stringified_arrays() {
+        let pkgs: Vec<NXVPackage> =
+            serde_json::from_str(NXV_LEGACY_SAMPLE).expect("parse legacy NXVPackage");
+        assert_eq!(pkgs[0].platforms.as_deref(), Some(&["x86_64-linux".to_string()][..]));
+        let results: Vec<NXVResult> =
+            serde_json::from_str(NXV_LEGACY_SAMPLE).expect("parse legacy NXVResult");
+        assert_eq!(
+            results[0].license.as_deref(),
+            Some(&["unfreeRedistributable".to_string()][..])
+        );
     }
 }
