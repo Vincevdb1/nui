@@ -39,6 +39,18 @@ To use it in your own Flake:
 }
 ```
 
+### Package Variants
+The Flake provides two variants of the package:
+
+| Package | Description |
+|---------|-------------|
+| `nui` (`default`) | Wrapped build with **nix-search** and **nxv** bundled on its `PATH`. |
+| `nui-unwrapped` | Plain build without bundled tools; **nix-search** and **nxv** must be installed separately and available on your `PATH`. |
+
+```bash
+nix run github:Vincevdb1/nui#nui-unwrapped
+```
+
 ## Getting Started
 
 ### Navigation & Controls
@@ -54,7 +66,7 @@ To use it in your own Flake:
 ## Requirements
 - **Nix**: Must have the Nix package manager installed with Flakes enabled (`experimental-features = nix-command flakes`).
 
-> **Note**: When installed via the provided Flake, **nix-search** and **nxv** are automatically bundled and available to `nui` at runtime.
+> **Note**: The default `nui` package from the provided Flake bundles **nix-search** and **nxv** automatically. When using `nui-unwrapped`, install them yourself.
 
 - **nix-search**: [nix-search-cli](https://github.com/peterldowns/nix-search-cli) - Required for fast, interactive package searching.
 - **nxv**: [Nix Version search](https://github.com/utensils/nxv) - Required for fetching and selecting specific package versions.

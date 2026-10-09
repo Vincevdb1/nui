@@ -16,39 +16,52 @@
       manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
     in
     {
-      packages.${system}.default = pkgs.rustPlatform.buildRustPackage {
-        pname = manifest.name;
-        version = manifest.version;
-        src = ./.;
+      packages.${system} = rec {
+        # Plain build; expects nix-search-cli and nxv to be on PATH at runtime.
+        nui-unwrapped = pkgs.rustPlatform.buildRustPackage {
+          pname = manifest.name;
+          version = manifest.version;
+          src = ./.;
 
-        cargoLock = {
-          lockFile = ./Cargo.lock;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+          };
+
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+            nix-search-cli
+          ];
+
+          buildInputs = with pkgs; [
+          ];
+
+          meta.mainProgram = "nui";
         };
 
-        nativeBuildInputs = with pkgs; [
-          pkg-config
-          makeWrapper
-          nix-search-cli
-        ];
+        # Wrapped build with nix-search-cli and nxv on PATH.
+        nui = pkgs.symlinkJoin {
+          name = "${manifest.name}-${manifest.version}";
+          paths = [ nui-unwrapped ];
+          nativeBuildInputs = [ pkgs.makeWrapper ];
+          postBuild = ''
+            wrapProgram $out/bin/nui \
+              --prefix PATH : ${
+                pkgs.lib.makeBinPath [
+                  pkgs.nix-search-cli
+                  pkgs.nxv
+                ]
+              }
+          '';
+          meta.mainProgram = "nui";
+        };
 
-        buildInputs = with pkgs; [
-        ];
-
-        postInstall = ''
-          wrapProgram $out/bin/nui \
-            --prefix PATH : ${
-              pkgs.lib.makeBinPath [
-                pkgs.nix-search-cli
-                pkgs.nxv
-              ]
-            }
-        '';
+        default = nui;
       };
 
       devShells.${system}.default = pkgs.mkShell {
         name = "nui";
 
-        inputsFrom = [ self.packages.${system}.default ];
+        inputsFrom = [ self.packages.${system}.nui-unwrapped ];
 
         buildInputs = with pkgs; [
           cargo-generate
