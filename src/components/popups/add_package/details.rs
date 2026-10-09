@@ -1,3 +1,4 @@
+use crate::components::popups::centered_rect;
 use crate::state::domain::SearchResult;
 use ratatui::{
     Frame,
@@ -6,7 +7,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
-use crate::components::popups::centered_rect;
 
 pub fn render_details(frame: &mut Frame, result: &SearchResult) {
     let area = centered_rect(60, 50, frame.area());

@@ -96,8 +96,6 @@ pub fn normalize_flake_ref(path: &str) -> String {
 }
 
 pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
-    let mut configs = Vec::new();
-
     let output = std::process::Command::new("nix")
         .args([
             "flake",
@@ -116,13 +114,13 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
     }
 
     let json: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    let flake_nix = std::fs::read_to_string(flake_path.join("flake.nix")).unwrap_or_default();
+    Ok(outputs_from_flake_show(&json, &flake_nix))
+}
 
-    let flake_nix_path = flake_path.join("flake.nix");
-    let ast_configs = if let Ok(content) = std::fs::read_to_string(flake_nix_path) {
-        extract_outputs(&content)
-    } else {
-        Vec::new()
-    };
+pub fn outputs_from_flake_show(json: &serde_json::Value, flake_nix: &str) -> Vec<Output> {
+    let mut configs = Vec::new();
+    let ast_configs = extract_outputs(flake_nix);
 
     let is_v2 = json.get("version").and_then(|v| v.as_u64()) == Some(2);
     let target_obj = if is_v2 {
@@ -221,7 +219,7 @@ pub fn fetch_outputs(flake_path: &Path) -> Result<Vec<Output>> {
         a.config_type.cmp(&b.config_type).then(a.path.cmp(&b.path))
     });
 
-    Ok(configs)
+    configs
 }
 
 pub fn extract_outputs(content: &str) -> Vec<Output> {

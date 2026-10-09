@@ -301,16 +301,14 @@ pub fn nxv_search(
     let filtered = results
         .into_iter()
         .filter(|p| seen.insert(p.attribute_path.clone()))
-        .map(|p| {
-            SearchPackage {
-                attribute: p.attribute_path,
-                pname: Some(p.name),
-                version: Some(p.version),
-                description: p.description,
-                platforms: p.platforms,
-                license_set: p.license,
-                hash: Some(p.last_commit_hash),
-            }
+        .map(|p| SearchPackage {
+            attribute: p.attribute_path,
+            pname: Some(p.name),
+            version: Some(p.version),
+            description: p.description,
+            platforms: p.platforms,
+            license_set: p.license,
+            hash: Some(p.last_commit_hash),
         })
         .collect();
 
@@ -358,7 +356,10 @@ pub fn fetch_system_versions_batch(
 
     for attr in &attrs {
         // Simple sanitization: only allow alphanumeric, dots, underscores, hyphens
-        if attr.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-') {
+        if attr
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+        {
             expr.push_str(&format!("\"{}\" = getV \"{}\"; ", attr, attr));
         }
     }
@@ -629,7 +630,10 @@ mod tests {
     fn parses_legacy_stringified_arrays() {
         let pkgs: Vec<NXVPackage> =
             serde_json::from_str(NXV_LEGACY_SAMPLE).expect("parse legacy NXVPackage");
-        assert_eq!(pkgs[0].platforms.as_deref(), Some(&["x86_64-linux".to_string()][..]));
+        assert_eq!(
+            pkgs[0].platforms.as_deref(),
+            Some(&["x86_64-linux".to_string()][..])
+        );
         let results: Vec<NXVResult> =
             serde_json::from_str(NXV_LEGACY_SAMPLE).expect("parse legacy NXVResult");
         assert_eq!(

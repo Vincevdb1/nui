@@ -29,7 +29,9 @@ pub fn handle_search_action(state: &mut AppState, _context: &Context, action: Ac
                                     result
                                         .versions
                                         .iter()
-                                        .find(|v| v.channel == *sys_v || sys_v.starts_with(&v.channel))
+                                        .find(|v| {
+                                            v.channel == *sys_v || sys_v.starts_with(&v.channel)
+                                        })
                                         .map(|v| v.version.clone())
                                         .unwrap_or_else(|| {
                                             result

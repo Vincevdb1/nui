@@ -6,9 +6,9 @@ use crate::state::{
     Mode,
     domain::{self, ChannelVersion, SearchResult},
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::collections::HashMap;
 
 impl NixService {
     pub fn fetch_package_details(
@@ -169,10 +169,7 @@ impl NixService {
                         }
                         Ok((source, Err(e))) => {
                             if is_current() {
-                                crate::log_output(
-                                    format!("Search Error ({})", source),
-                                    e.clone(),
-                                );
+                                crate::log_output(format!("Search Error ({})", source), e.clone());
                             }
                             if source == "nxv" {
                                 nxv_search_err = Some(e);
@@ -197,13 +194,15 @@ impl NixService {
                     .map(|r| r.name.clone())
                     .collect();
 
-                let system_versions = domain::fetch_system_versions_batch(attrs_to_fetch, Some(&reg));
+                let system_versions =
+                    domain::fetch_system_versions_batch(attrs_to_fetch, Some(&reg));
 
                 for res in final_results.iter_mut().take(50) {
                     if let Some(sys_version) = system_versions.get(&res.name) {
                         if sys_version != "Unknown" {
                             // Add or update the system version in the versions list
-                            if let Some(v) = res.versions.iter_mut().find(|v| v.channel == "system") {
+                            if let Some(v) = res.versions.iter_mut().find(|v| v.channel == "system")
+                            {
                                 v.version = sys_version.clone();
                             } else {
                                 res.versions.insert(
@@ -229,7 +228,10 @@ impl NixService {
                         return;
                     }
                 }
-                let _ = tx.send(Action::SetPackageSearchResults(search_id, Ok(final_results)));
+                let _ = tx.send(Action::SetPackageSearchResults(
+                    search_id,
+                    Ok(final_results),
+                ));
                 return;
             } else {
                 let mut threads = Vec::new();
@@ -334,10 +336,7 @@ impl NixService {
                         }
                         Ok((source, Err(e))) => {
                             if is_current() {
-                                crate::log_output(
-                                    format!("Search Error ({})", source),
-                                    e.clone(),
-                                );
+                                crate::log_output(format!("Search Error ({})", source), e.clone());
                             }
                             search_errors.push(e);
                         }
@@ -348,16 +347,20 @@ impl NixService {
                 }
 
                 if results_map.is_empty() && !search_errors.is_empty() {
-                    let _ = tx.send(Action::SetPackageSearchResults(search_id, Err(
-                        search_errors[0].clone()
-                    )));
+                    let _ = tx.send(Action::SetPackageSearchResults(
+                        search_id,
+                        Err(search_errors[0].clone()),
+                    ));
                     return;
                 }
             }
 
             let mut final_results: Vec<SearchResult> = results_map.into_values().collect();
             crate::services::nix::search_sort::sort_search_results(&mut final_results, &query);
-            let _ = tx.send(Action::SetPackageSearchResults(search_id, Ok(final_results)));
+            let _ = tx.send(Action::SetPackageSearchResults(
+                search_id,
+                Ok(final_results),
+            ));
         });
     }
 
@@ -374,22 +377,26 @@ impl NixService {
 
                 let tx = tx.clone();
                 let pkg = pkg_name.clone();
-                std::thread::spawn(move || match domain::nix_search_cli(pkg.clone(), channel, None) {
-                    Ok(results) => {
-                        let latest = results.iter().find(|p| p.attribute == pkg).or_else(|| {
-                            results
-                                .iter()
-                                .find(|p| p.attribute.ends_with(&format!(".{}", pkg)))
-                        });
+                std::thread::spawn(move || {
+                    match domain::nix_search_cli(pkg.clone(), channel, None) {
+                        Ok(results) => {
+                            let latest =
+                                results.iter().find(|p| p.attribute == pkg).or_else(|| {
+                                    results
+                                        .iter()
+                                        .find(|p| p.attribute.ends_with(&format!(".{}", pkg)))
+                                });
 
-                        if let Some(latest) = latest {
-                            if let Some(version) = &latest.version {
-                                let _ = tx.send(Action::UpdatePackageVersion(pkg, version.clone()));
+                            if let Some(latest) = latest {
+                                if let Some(version) = &latest.version {
+                                    let _ =
+                                        tx.send(Action::UpdatePackageVersion(pkg, version.clone()));
+                                }
                             }
                         }
-                    }
-                    Err(e) => {
-                        crate::log_output(format!("Update Check Error ({})", pkg), e);
+                        Err(e) => {
+                            crate::log_output(format!("Update Check Error ({})", pkg), e);
+                        }
                     }
                 });
             }
