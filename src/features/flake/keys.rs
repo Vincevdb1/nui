@@ -105,13 +105,14 @@ fn toggle_mark(app: &mut App) {
 
 fn toggle_pin(app: &mut App) {
     let flake = &app.flake;
-    let Some(package) = flake.selected_package().map(|p| p.name.clone()) else {
+    let Some(selected) = flake.selected_package() else {
         return;
     };
     let Some((file, target)) = flake.edit_target() else {
         return;
     };
-    let edit = if package.starts_with("inputs.") {
+    let package = selected.qualified_name();
+    let edit = if selected.is_pinned() {
         FlakeEdit::Unpin { target, package }
     } else {
         FlakeEdit::Pin {

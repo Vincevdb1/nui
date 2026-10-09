@@ -145,28 +145,30 @@ pub fn packages_loaded(
     );
     flake.error = None;
 
-    // Evaluated packages don't say which input they came from; recover it from the source.
-    let sources: HashMap<String, String> = flake
+    // Evaluated packages don't say how they were written; recover it from the source.
+    let written: HashMap<String, String> = flake
         .selected_output()
         .and_then(|o| o.content.as_deref())
         .map(parse::package_attributes)
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|attr| {
-            let (source, name) = attr.split_once('.')?;
-            Some((name.to_string(), source.to_string()))
-        })
+        .map(|attr| (parse::ref_source(&attr).1.to_string(), attr))
         .collect();
 
     flake.packages = packages
         .into_iter()
         .map(|mut pkg| {
-            pkg.source = sources.get(&pkg.name).cloned().or_else(|| {
-                sources
+            pkg.attr = written.get(&pkg.name).cloned().or_else(|| {
+                written
                     .iter()
                     .find(|(k, _)| pkg.name.starts_with(*k) || k.starts_with(&pkg.name))
                     .map(|(_, v)| v.clone())
             });
+            pkg.source = pkg
+                .attr
+                .as_deref()
+                .and_then(|a| parse::ref_source(a).0)
+                .map(str::to_string);
             pkg
         })
         .filter(|pkg| pkg.source.is_some() || !pkg.version.is_empty())

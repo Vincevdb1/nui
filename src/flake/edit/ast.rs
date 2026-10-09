@@ -1,19 +1,8 @@
 use crate::flake::model::ShellTarget;
-use crate::flake::parse::{PACKAGE_LIST_ATTRS, binding_path, binding_value, package_list};
+use crate::flake::parse::{
+    PACKAGE_LIST_ATTRS, attr_segments, binding_path, binding_value, package_list,
+};
 use rnix::{SyntaxKind, SyntaxNode, SyntaxToken};
-
-pub fn attr_segments(attrpath: &SyntaxNode) -> Vec<String> {
-    attrpath
-        .children_with_tokens()
-        .filter(|c| {
-            !matches!(
-                c.kind(),
-                SyntaxKind::TOKEN_DOT | SyntaxKind::TOKEN_WHITESPACE
-            )
-        })
-        .map(|c| c.to_string().trim().to_string())
-        .collect()
-}
 
 fn attrpath(binding: &SyntaxNode) -> Option<SyntaxNode> {
     binding

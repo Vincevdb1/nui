@@ -140,6 +140,7 @@ pub fn output_packages(flake_ref: &str, output: &Output) -> Result<Vec<Package>>
                 version: pkg.version,
                 is_unfree: pkg.is_unfree,
                 source: None,
+                attr: None,
             },
         );
     }

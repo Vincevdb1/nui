@@ -116,18 +116,16 @@ pub struct Package {
     pub version: String,
     pub is_unfree: bool,
     pub source: Option<String>,
+    /// The list item as written in flake.nix, e.g. `pkgs.hello`.
+    pub attr: Option<String>,
 }
 
 impl Package {
-    /// The attribute as written in flake.nix, e.g. `nixpkgs-stable.hello`.
     pub fn qualified_name(&self) -> String {
-        match &self.source {
-            Some(source) => format!("{}.{}", source, self.name),
-            None => self.name.clone(),
-        }
+        self.attr.clone().unwrap_or_else(|| self.name.clone())
     }
 
     pub fn is_pinned(&self) -> bool {
-        self.name.starts_with("inputs.")
+        self.attr.as_deref().is_some_and(|a| a.starts_with("inputs."))
     }
 }

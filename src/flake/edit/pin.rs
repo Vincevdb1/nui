@@ -1,9 +1,10 @@
 use super::EditError;
-use super::ast::{package_lists, replace_in_lists, shell_set};
+use super::ast::{outputs_pattern, package_lists, replace_in_lists, shell_set};
 use super::inputs::{add_input, remove_input};
 use super::packages::input_is_used;
 use crate::flake::model::{Input, ShellTarget};
-use rnix::Root;
+use crate::flake::parse;
+use rnix::{Root, SyntaxKind};
 
 /// Pins `pkg` to the locked revision of its source input via a dedicated input.
 pub fn pin_package(
@@ -12,10 +13,9 @@ pub fn pin_package(
     pkg: &str,
     inputs: &[Input],
 ) -> Result<String, EditError> {
-    let (source, attr) = match pkg.split_once('.') {
-        Some(("pkgs" | "self", attr)) => ("nixpkgs", attr),
-        Some((input, attr)) => (input, attr),
-        None => ("nixpkgs", pkg),
+    let (source, attr) = match parse::ref_source(pkg) {
+        (Some("pkgs" | "self") | None, attr) => ("nixpkgs", attr),
+        (Some(input), attr) => (input, attr),
     };
 
     let input = inputs
@@ -29,7 +29,7 @@ pub fn pin_package(
         .ok_or_else(|| EditError::Unlocked(input.name.clone()))?;
 
     let pinned_input = format!("{}-{}", input.name, attr).replace('.', "-");
-    let mut result = add_input(src, &pinned_input, &pinned_url(input, rev));
+    let mut result = bind_inputs(&add_input(src, &pinned_input, &pinned_url(input, rev)));
 
     let pinned_ref = format!(
         "inputs.{}.legacyPackages.${{system}}.{}",
@@ -51,6 +51,23 @@ pub fn pin_package(
         return Err(EditError::PackageNotFound(pkg.to_string()));
     }
     Ok(result)
+}
+
+/// Binds the outputs pattern as `inputs@{ ... }` so pinned refs can reach their input.
+fn bind_inputs(src: &str) -> String {
+    let root = Root::parse(src).syntax();
+    let Some(pattern) = outputs_pattern(&root) else {
+        return src.to_string();
+    };
+    if pattern
+        .children()
+        .any(|c| c.kind() == SyntaxKind::NODE_PAT_BIND)
+    {
+        return src.to_string();
+    }
+    let mut result = src.to_string();
+    result.insert_str(usize::from(pattern.text_range().start()), "inputs@");
+    result
 }
 
 fn pinned_url(input: &Input, rev: &str) -> String {

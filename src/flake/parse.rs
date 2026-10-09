@@ -126,124 +126,144 @@ pub fn outputs_from_flake_show(json: &serde_json::Value, flake_nix: &str) -> Vec
 
 /// Outputs as written in flake.nix, with `let` bindings substituted into their paths.
 pub fn outputs(flake_nix: &str) -> Vec<Output> {
-    let Ok(outputs_val) = nix_editor::read::readvalue(flake_nix, "outputs") else {
+    let root = Root::parse(flake_nix).syntax();
+    let Some(mut body) = root
+        .children()
+        .find(|c| c.kind() == SyntaxKind::NODE_ATTR_SET)
+        .and_then(|set| {
+            set.children()
+                .filter(|c| c.kind() == SyntaxKind::NODE_ATTRPATH_VALUE)
+                .find(|c| binding_path(c).as_deref() == Some("outputs"))
+        })
+        .and_then(|b| binding_value(&b))
+    else {
         return Vec::new();
     };
 
-    let mut replacements: HashMap<String, String> = HashMap::new();
-    let ast = Root::parse(&outputs_val);
-    let mut body_val = outputs_val.clone();
-
-    if let Some(lambda) = ast
-        .syntax()
-        .descendants()
-        .find(|n| n.kind() == SyntaxKind::NODE_LAMBDA)
-        && let Some(body) = lambda.children().find(|c| {
-            !matches!(
-                c.kind(),
-                SyntaxKind::NODE_PATTERN
-                    | SyntaxKind::TOKEN_COLON
-                    | SyntaxKind::TOKEN_WHITESPACE
-                    | SyntaxKind::TOKEN_COMMENT
-            )
-        })
-    {
-        body_val = body.to_string();
+    let mut lets: HashMap<String, String> = HashMap::new();
+    while matches!(
+        body.kind(),
+        SyntaxKind::NODE_LAMBDA
+            | SyntaxKind::NODE_LET_IN
+            | SyntaxKind::NODE_WITH
+            | SyntaxKind::NODE_PAREN
+    ) {
         if body.kind() == SyntaxKind::NODE_LET_IN {
             for binding in body
                 .children()
                 .filter(|c| c.kind() == SyntaxKind::NODE_ATTRPATH_VALUE)
             {
-                let key = binding
-                    .children()
-                    .find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH)
-                    .map(|p| p.text().to_string().trim().to_string())
-                    .unwrap_or_default();
-                let val = binding
-                    .children()
-                    .find(|c| c.kind() != SyntaxKind::NODE_ATTRPATH)
-                    .map(|v| v.text().to_string().trim().trim_matches('"').to_string())
-                    .unwrap_or_default();
-                if !key.is_empty() && !val.is_empty() {
-                    replacements.insert(format!("${{{}}}", key), val);
+                if let (Some(key), Some(val)) = (binding_path(&binding), binding_value(&binding)) {
+                    lets.insert(key, val.to_string().trim().trim_matches('"').to_string());
                 }
             }
-            if let Some(actual_body) = body.children().last() {
-                body_val = actual_body.to_string();
-            }
         }
+        let Some(inner) = body.children().last() else {
+            return Vec::new();
+        };
+        body = inner;
     }
 
-    let Ok(collection) = nix_editor::parse::get_collection(body_val) else {
-        return Vec::new();
-    };
-
-    let read_name = |val: &str| {
-        nix_editor::read::readvalue(val, "name")
-            .ok()
-            .map(|n| n.trim_matches('"').to_string())
-    };
-
     let mut result = Vec::new();
-    for (key, val) in collection {
-        let parts = split_attr_path(&key);
-        let Some(kind) = OutputKind::from_attr(&parts[0]) else {
-            continue;
-        };
-
-        let mut path = parts[1..]
-            .iter()
-            .take_while(|p| !PACKAGE_LIST_ATTRS.contains(&p.as_str()))
-            .map(|p| p.trim_matches('"'))
-            .collect::<Vec<_>>()
-            .join(".");
-        for (k, v) in &replacements {
-            path = path.replace(k, v);
-        }
-
-        match nix_editor::parse::get_collection(val.clone()) {
-            Ok(inner) => {
-                for (inner_key, inner_val) in inner {
-                    let inner_key = inner_key.trim_matches('"');
-                    result.push(Output {
-                        kind,
-                        path: if path.is_empty() {
-                            inner_key.to_string()
-                        } else {
-                            format!("{}.{}", path, inner_key)
-                        },
-                        name: read_name(&inner_val),
-                        content: Some(inner_val),
-                    });
-                }
-            }
-            Err(_) => result.push(Output {
-                kind,
-                path,
-                name: read_name(&val),
-                content: Some(val),
-            }),
-        }
+    if body.kind() == SyntaxKind::NODE_ATTR_SET {
+        collect_outputs(&body, &[], &lets, &mut result);
     }
     result
 }
 
-fn split_attr_path(key: &str) -> Vec<String> {
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    let mut in_quotes = false;
-    for c in key.chars() {
-        match c {
-            '"' => {
-                in_quotes = !in_quotes;
-                current.push(c);
-            }
-            '.' if !in_quotes => parts.push(std::mem::take(&mut current)),
-            _ => current.push(c),
+/// Walks nested sets until the path reaches an output, e.g. `devShells.<system>.<name>`.
+fn collect_outputs(
+    set: &SyntaxNode,
+    prefix: &[String],
+    lets: &HashMap<String, String>,
+    result: &mut Vec<Output>,
+) {
+    for binding in set
+        .children()
+        .filter(|c| c.kind() == SyntaxKind::NODE_ATTRPATH_VALUE)
+    {
+        let (Some(attrpath), Some(value)) = (
+            binding
+                .children()
+                .find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH),
+            binding_value(&binding),
+        ) else {
+            continue;
+        };
+        let path: Vec<String> = prefix
+            .iter()
+            .cloned()
+            .chain(attr_segments(&attrpath))
+            .collect();
+        let Some(kind) = path.first().and_then(|p| OutputKind::from_attr(p)) else {
+            continue;
+        };
+        let depth = if kind.is_per_system() { 3 } else { 2 };
+        if path.len() < depth && value.kind() == SyntaxKind::NODE_ATTR_SET {
+            collect_outputs(&value, &path, lets, result);
+        } else if path.len() == depth {
+            result.push(Output {
+                kind,
+                path: path[1..]
+                    .iter()
+                    .map(|s| resolve_segment(s, lets))
+                    .collect::<Vec<_>>()
+                    .join("."),
+                name: output_name(&value),
+                content: Some(value.to_string()),
+            });
         }
     }
-    parts.push(current);
-    parts
+}
+
+fn resolve_segment(segment: &str, lets: &HashMap<String, String>) -> String {
+    let segment = segment.trim_matches('"');
+    segment
+        .strip_prefix("${")
+        .and_then(|s| s.strip_suffix('}'))
+        .and_then(|name| lets.get(name.trim()))
+        .cloned()
+        .unwrap_or_else(|| segment.to_string())
+}
+
+/// The `name` set on an output, e.g. in `pkgs.mkShell { name = "..."; }`.
+fn output_name(value: &SyntaxNode) -> Option<String> {
+    value
+        .descendants()
+        .find(|n| n.kind() == SyntaxKind::NODE_ATTR_SET)?
+        .children()
+        .filter(|c| c.kind() == SyntaxKind::NODE_ATTRPATH_VALUE)
+        .find(|b| binding_path(b).as_deref() == Some("name"))
+        .and_then(|b| binding_value(&b))
+        .map(|v| v.to_string().trim_matches('"').to_string())
+}
+
+pub fn attr_segments(attrpath: &SyntaxNode) -> Vec<String> {
+    attrpath
+        .children_with_tokens()
+        .filter(|c| {
+            !matches!(
+                c.kind(),
+                SyntaxKind::TOKEN_DOT | SyntaxKind::TOKEN_WHITESPACE
+            )
+        })
+        .map(|c| c.to_string().trim().to_string())
+        .collect()
+}
+
+/// The input a package reference comes from and the attribute it names, e.g.
+/// `inputs.foo.legacyPackages.${system}.hello` gives `(Some("foo"), "hello")`.
+pub fn ref_source(attr: &str) -> (Option<&str>, &str) {
+    let rest = attr.strip_prefix("inputs.").unwrap_or(attr);
+    let Some((source, rest)) = rest.split_once('.') else {
+        return (None, attr);
+    };
+    let leaf = ["legacyPackages.", "packages."]
+        .iter()
+        .find_map(|p| rest.strip_prefix(p))
+        .and_then(|r| r.split_once('.').map(|(_, leaf)| leaf))
+        .unwrap_or(rest);
+    (Some(source), leaf)
 }
 
 /// The value node of an `attrpath = value;` binding.

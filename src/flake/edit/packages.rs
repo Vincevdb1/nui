@@ -52,7 +52,7 @@ pub fn remove_packages(src: &str, target: &ShellTarget, pkgs: &[String]) -> Stri
     let mut result = src.to_string();
     for pkg in pkgs {
         result = remove_from_shell(&result, target, pkg);
-        if let Some((input, _)) = pkg.split_once('.')
+        if let (Some(input), _) = parse::ref_source(pkg)
             && parse::inputs(&result, None).iter().any(|i| i.name == input)
             && !input_is_used(&result, input)
         {
@@ -93,6 +93,6 @@ pub fn input_is_used(src: &str, input: &str) -> bool {
     parse::outputs(src).iter().any(|output| {
         parse::package_attributes(output.content.as_deref().unwrap_or(""))
             .iter()
-            .any(|a| a == input || a.starts_with(&format!("{}.", input)))
+            .any(|a| a == input || parse::ref_source(a).0 == Some(input))
     })
 }
