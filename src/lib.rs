@@ -1,0 +1,9 @@
+pub mod app;
+pub mod backend;
+pub mod features;
+pub mod flake;
+pub mod log;
+pub mod pkgref;
+pub mod shell_launch;
+pub mod tui;
+pub mod ui;

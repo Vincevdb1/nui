@@ -1,0 +1,28 @@
+{
+  "devShells": {
+    "x86_64-linux": {
+      "default": {
+        "name": "mixed-default",
+        "type": "derivation"
+      },
+      "tools": {
+        "name": "tools",
+        "type": "derivation"
+      }
+    }
+  },
+  "nixosConfigurations": {
+    "server": {
+      "type": "nixos-configuration"
+    }
+  },
+  "packages": {
+    "x86_64-linux": {
+      "default": {
+        "description": "Program that produces a familiar, friendly greeting",
+        "name": "hello-2.12.2",
+        "type": "derivation"
+      }
+    }
+  }
+}

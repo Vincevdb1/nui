@@ -1,16 +1,7 @@
-mod app;
-mod backend;
-mod features;
-mod flake;
-mod log;
-mod pkgref;
-mod shell_launch;
-mod tui;
-mod ui;
-
-use app::{Action, App, Executor, Exit, Mode};
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
+use nui::app::{self, Action, App, Executor, Exit, Mode};
+use nui::{backend, log, shell_launch, tui, ui};
 use ratatui::crossterm::event::{self, Event};
 use std::sync::mpsc;
 use std::time::Duration;

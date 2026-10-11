@@ -185,37 +185,7 @@ pub fn run(
                 })
                 .collect();
             collect(jobs, &mut |source, pkg, results| {
-                let entry = results
-                    .entry(pkg.attribute.clone())
-                    .or_insert_with(|| SearchResult {
-                        description: pkg.description.clone().unwrap_or_default(),
-                        platforms: pkg.platforms.clone().unwrap_or_default(),
-                        ..SearchResult::new(pkg.attribute.clone(), None, pkg.hash.clone())
-                    });
-                if entry.description.is_empty()
-                    && let Some(desc) = &pkg.description
-                {
-                    entry.description = desc.clone();
-                }
-                if entry.platforms.is_empty()
-                    && let Some(platforms) = &pkg.platforms
-                {
-                    entry.platforms = platforms.clone();
-                }
-                entry.absorb_common(&pkg);
-
-                let channel = if source == "nxv" || source.contains('.') || source.contains("git") {
-                    source.to_string()
-                } else {
-                    "nixos-unstable".to_string()
-                };
-                if !entry.versions.iter().any(|v| v.channel == channel) {
-                    entry.versions.push(ChannelVersion {
-                        version: pkg.version.unwrap_or_else(|| "Unknown".to_string()),
-                        channel,
-                        locked_version: None,
-                    });
-                }
+                merge_shell(results, source, pkg)
             });
             let mut sorted = sorted(results, query);
             add_system_versions(&mut sorted, reg);
@@ -254,38 +224,7 @@ pub fn run(
             let input_names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
             collect(jobs, &mut |source, pkg, results| {
                 let is_input = source == "self" || input_names.contains(&source);
-                let key = if is_input {
-                    format!("{}.{}", source, pkg.attribute)
-                } else {
-                    pkg.attribute.clone()
-                };
-                let entry = results.entry(key.clone()).or_insert_with(|| {
-                    SearchResult::new(key, is_input.then(|| source.to_string()), pkg.hash.clone())
-                });
-                entry.absorb_common(&pkg);
-
-                let had_unstable = entry
-                    .versions
-                    .iter()
-                    .any(|v| v.channel.contains("unstable"));
-                let desc = pkg.description.clone().unwrap_or_default();
-                if entry.description.is_empty()
-                    || (source.contains("unstable") && !had_unstable)
-                    || desc.len() > entry.description.len()
-                {
-                    entry.description = desc;
-                }
-                for platform in pkg.platforms.into_iter().flatten() {
-                    if !entry.platforms.contains(&platform) {
-                        entry.platforms.push(platform);
-                    }
-                }
-                entry.platforms.sort();
-                entry.versions.push(ChannelVersion {
-                    version: pkg.version.unwrap_or_else(|| "Unknown".to_string()),
-                    channel: source.to_string(),
-                    locked_version: None,
-                });
+                merge_flake(results, source, is_input, pkg)
             });
 
             if results.is_empty()
@@ -298,7 +237,85 @@ pub fn run(
     }
 }
 
-fn sorted(results: HashMap<String, SearchResult>, query: &str) -> Vec<SearchResult> {
+/// Folds a shell-scope search hit into its attribute's result, one version per channel.
+pub fn merge_shell(results: &mut HashMap<String, SearchResult>, source: &str, pkg: SearchPackage) {
+    let entry = results
+        .entry(pkg.attribute.clone())
+        .or_insert_with(|| SearchResult {
+            description: pkg.description.clone().unwrap_or_default(),
+            platforms: pkg.platforms.clone().unwrap_or_default(),
+            ..SearchResult::new(pkg.attribute.clone(), None, pkg.hash.clone())
+        });
+    if entry.description.is_empty()
+        && let Some(desc) = &pkg.description
+    {
+        entry.description = desc.clone();
+    }
+    if entry.platforms.is_empty()
+        && let Some(platforms) = &pkg.platforms
+    {
+        entry.platforms = platforms.clone();
+    }
+    entry.absorb_common(&pkg);
+
+    let channel = if source == "nxv" || source.contains('.') || source.contains("git") {
+        source.to_string()
+    } else {
+        "nixos-unstable".to_string()
+    };
+    if !entry.versions.iter().any(|v| v.channel == channel) {
+        entry.versions.push(ChannelVersion {
+            version: pkg.version.unwrap_or_else(|| "Unknown".to_string()),
+            channel,
+            locked_version: None,
+        });
+    }
+}
+
+/// Folds a flake-scope search hit into its result; hits from inputs (and `self`) are keyed
+/// as `<input>.<attr>` so they stay separate from nixpkgs packages.
+pub fn merge_flake(
+    results: &mut HashMap<String, SearchResult>,
+    source: &str,
+    is_input: bool,
+    pkg: SearchPackage,
+) {
+    let key = if is_input {
+        format!("{}.{}", source, pkg.attribute)
+    } else {
+        pkg.attribute.clone()
+    };
+    let entry = results.entry(key.clone()).or_insert_with(|| {
+        SearchResult::new(key, is_input.then(|| source.to_string()), pkg.hash.clone())
+    });
+    entry.absorb_common(&pkg);
+
+    let had_unstable = entry
+        .versions
+        .iter()
+        .any(|v| v.channel.contains("unstable"));
+    let desc = pkg.description.clone().unwrap_or_default();
+    if entry.description.is_empty()
+        || (source.contains("unstable") && !had_unstable)
+        || desc.len() > entry.description.len()
+    {
+        entry.description = desc;
+    }
+    for platform in pkg.platforms.into_iter().flatten() {
+        if !entry.platforms.contains(&platform) {
+            entry.platforms.push(platform);
+        }
+    }
+    entry.platforms.sort();
+    entry.versions.push(ChannelVersion {
+        version: pkg.version.unwrap_or_else(|| "Unknown".to_string()),
+        channel: source.to_string(),
+        locked_version: None,
+    });
+}
+
+/// Ranks exact matches, then prefix, substring and description matches, then by name.
+pub fn sorted(results: HashMap<String, SearchResult>, query: &str) -> Vec<SearchResult> {
     let query = query.to_lowercase();
     let mut results: Vec<SearchResult> = results.into_values().collect();
     results.sort_by_cached_key(|r| {

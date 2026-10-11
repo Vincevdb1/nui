@@ -20,7 +20,7 @@ struct CliLicense {
 }
 
 /// nix-search only knows `unstable` and release numbers such as `25.11`.
-fn cli_channel(channel: &str) -> String {
+pub fn cli_channel(channel: &str) -> String {
     if channel.contains("unstable") {
         return "unstable".to_string();
     }
@@ -56,9 +56,12 @@ pub fn search(
 ) -> Result<Vec<SearchPackage>> {
     let mut cmd = Command::new("nix-search");
     cmd.args(["--json", "--channel", &cli_channel(channel), query]);
-    let out = stdout("nix-search", cmd, reg)?;
+    Ok(parse_output(&stdout("nix-search", cmd, reg)?))
+}
 
-    Ok(String::from_utf8_lossy(&out)
+/// Parses `nix-search --json` output, one JSON object per line; unparsable lines are skipped.
+pub fn parse_output(out: &[u8]) -> Vec<SearchPackage> {
+    String::from_utf8_lossy(out)
         .lines()
         .filter(|line| !line.trim().is_empty())
         .filter_map(|line| serde_json::from_str::<CliPackage>(line).ok())
@@ -72,5 +75,5 @@ pub fn search(
                 .map(|ls| ls.into_iter().map(|l| l.full_name).collect()),
             hash: None,
         })
-        .collect())
+        .collect()
 }

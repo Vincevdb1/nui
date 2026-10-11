@@ -65,8 +65,9 @@ struct EvalPackage {
     is_unfree: bool,
 }
 
-/// Evaluates the packages an output installs; `source` is left for the caller to resolve.
-pub fn output_packages(flake_ref: &str, output: &Output) -> Result<Vec<Package>> {
+/// The flake attribute to evaluate for an output and the expression that extracts its
+/// package list; `None` for outputs that don't install packages.
+pub fn eval_target(output: &Output) -> Option<(String, &'static str)> {
     let quoted_path = output
         .path
         .split('.')
@@ -74,7 +75,7 @@ pub fn output_packages(flake_ref: &str, output: &Output) -> Result<Vec<Package>>
         .collect::<Vec<_>>()
         .join(".");
     let attr = output.kind.attr();
-    let (target, extract) = match output.kind {
+    Some(match output.kind {
         OutputKind::Nixos | OutputKind::Darwin => (
             format!("{}.{}.config.environment.systemPackages", attr, quoted_path),
             "extractList t",
@@ -87,7 +88,14 @@ pub fn output_packages(flake_ref: &str, output: &Output) -> Result<Vec<Package>>
             format!("{}.{}", attr, quoted_path),
             "extractList ((t.packages or []) ++ (t.buildInputs or []) ++ (t.nativeBuildInputs or []))",
         ),
-        OutputKind::Packages | OutputKind::LegacyPackages => return Ok(Vec::new()),
+        OutputKind::Packages | OutputKind::LegacyPackages => return None,
+    })
+}
+
+/// Evaluates the packages an output installs; `source` is left for the caller to resolve.
+pub fn output_packages(flake_ref: &str, output: &Output) -> Result<Vec<Package>> {
+    let Some((target, extract)) = eval_target(output) else {
+        return Ok(Vec::new());
     };
 
     let installable = format!("{}#{}", flake_ref, target);
@@ -160,9 +168,13 @@ pub fn search_flake(
 ) -> Result<Vec<SearchPackage>> {
     let mut cmd = Command::new("nix");
     cmd.args(["search", "--json", flake_url, query]);
-    let out = stdout("nix search", cmd, reg)?;
+    parse_flake_search(&stdout("nix search", cmd, reg)?)
+}
+
+/// Parses `nix search --json` output, keyed by attribute path.
+pub fn parse_flake_search(json: &[u8]) -> Result<Vec<SearchPackage>> {
     let results: HashMap<String, FlakeSearchPackage> =
-        serde_json::from_slice(&out).map_err(|e| Error::Parse("nix search", e))?;
+        serde_json::from_slice(json).map_err(|e| Error::Parse("nix search", e))?;
 
     Ok(results
         .into_iter()
@@ -232,7 +244,12 @@ pub fn metadata(attr: &str) -> Option<Metadata> {
         .output()
         .ok()
         .filter(|o| o.status.success())?;
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    parse_metadata(&output.stdout)
+}
+
+/// Parses `nix-env -qa <attr> --json` output, using its first entry.
+pub fn parse_metadata(json: &[u8]) -> Option<Metadata> {
+    let json: serde_json::Value = serde_json::from_slice(json).ok()?;
     let meta = json.as_object()?.values().next()?;
     Some(Metadata {
         version: meta

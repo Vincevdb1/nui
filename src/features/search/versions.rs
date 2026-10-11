@@ -103,7 +103,7 @@ impl VersionPicker {
     }
 }
 
-fn compare_versions(a: &str, b: &str) -> Ordering {
+pub fn compare_versions(a: &str, b: &str) -> Ordering {
     let a_parts: Vec<&str> = a.split(|c: char| !c.is_alphanumeric()).collect();
     let b_parts: Vec<&str> = b.split(|c: char| !c.is_alphanumeric()).collect();
     for (a, b) in a_parts.iter().zip(&b_parts) {

@@ -1,0 +1,73 @@
+{
+  "inventory": {
+    "devShells": {
+      "doc": "The `devShells` flake output contains derivations that provide a development environment for `nix develop`.\n",
+      "output": {
+        "children": {
+          "x86_64-linux": {
+            "children": {
+              "default": {
+                "derivation": {
+                  "name": "mixed-default"
+                },
+                "forSystems": [
+                  "x86_64-linux"
+                ],
+                "shortDescription": "",
+                "what": "development environment"
+              },
+              "tools": {
+                "derivation": {
+                  "name": "tools"
+                },
+                "forSystems": [
+                  "x86_64-linux"
+                ],
+                "shortDescription": "",
+                "what": "development environment"
+              }
+            }
+          }
+        }
+      }
+    },
+    "nixosConfigurations": {
+      "doc": "The `nixosConfigurations` flake output defines [NixOS system configurations](https://nixos.org/manual/nixos/stable/#ch-configuration).\n",
+      "output": {
+        "children": {
+          "server": {
+            "derivation": {
+              "name": "nixos-system-nixos-25.11.20260630.b6018f8"
+            },
+            "forSystems": [
+              "x86_64-linux"
+            ],
+            "what": "NixOS configuration"
+          }
+        }
+      }
+    },
+    "packages": {
+      "doc": "The `packages` flake output contains packages that can be added to a shell using `nix shell`.\n",
+      "output": {
+        "children": {
+          "x86_64-linux": {
+            "children": {
+              "default": {
+                "derivation": {
+                  "name": "hello-2.12.2"
+                },
+                "forSystems": [
+                  "x86_64-linux"
+                ],
+                "shortDescription": "Program that produces a familiar, friendly greeting",
+                "what": "package"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 2
+}

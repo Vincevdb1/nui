@@ -72,10 +72,12 @@ impl Tools {
 }
 
 fn tool_version(cmd: &str) -> Option<String> {
-    let first_line = trimmed_stdout(Command::new(cmd).arg("--version"))?
-        .lines()
-        .next()?
-        .to_string();
+    parse_tool_version(cmd, &trimmed_stdout(Command::new(cmd).arg("--version"))?)
+}
+
+/// The version in `<cmd> --version` output: the word after the tool's name, or the last word.
+pub fn parse_tool_version(cmd: &str, output: &str) -> Option<String> {
+    let first_line = output.lines().next()?;
     let parts: Vec<&str> = first_line.split_whitespace().collect();
     if parts.len() >= 2 && parts[0].eq_ignore_ascii_case(cmd) {
         Some(parts[1].to_string())

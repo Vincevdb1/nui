@@ -36,14 +36,24 @@ pub fn nixpkgs_branches() -> Result<Vec<Branch>, String> {
     let branches: Vec<GitHubBranch> = response
         .json()
         .map_err(|_| "Failed to parse GitHub API response for branches".to_string())?;
+    let branches = rank_branches(branches.into_iter().map(|b| b.name).collect());
 
+    crate::log::output(
+        "GitHub Output",
+        format!("Successfully fetched {} branches", branches.len()),
+    );
+    Ok(branches)
+}
+
+/// Keeps the release and rolling branches, rolling first, then newest release first.
+pub fn rank_branches(names: Vec<String>) -> Vec<Branch> {
     let is_rolling = |name: &str| name == "master" || name == "nixpkgs-unstable";
-    let mut branches: Vec<Branch> = branches
+    let mut branches: Vec<Branch> = names
         .into_iter()
-        .filter(|b| b.name.starts_with("nixos-") || is_rolling(&b.name))
-        .map(|b| Branch {
-            url: format!("github:nixos/nixpkgs/{}", b.name),
-            name: b.name,
+        .filter(|name| name.starts_with("nixos-") || is_rolling(name))
+        .map(|name| Branch {
+            url: format!("github:nixos/nixpkgs/{}", name),
+            name,
         })
         .collect();
     branches.sort_by(|a, b| {
@@ -51,10 +61,5 @@ pub fn nixpkgs_branches() -> Result<Vec<Branch>, String> {
             .cmp(&is_rolling(&a.name))
             .then_with(|| b.name.cmp(&a.name))
     });
-
-    crate::log::output(
-        "GitHub Output",
-        format!("Successfully fetched {} branches", branches.len()),
-    );
-    Ok(branches)
+    branches
 }

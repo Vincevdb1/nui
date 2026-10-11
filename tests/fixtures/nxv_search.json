@@ -1,0 +1,54 @@
+[
+  {
+    "id": 1769790,
+    "name": "ripgrep",
+    "version": "15.2.0",
+    "first_commit_hash": "d4a57f16",
+    "first_commit_date": "2026-07-16T00:20:00Z",
+    "last_commit_hash": "c8007378",
+    "last_commit_date": "2026-09-21T09:37:33Z",
+    "attribute_path": "ripgrep",
+    "description": "Fast grep",
+    "license": ["Unlicense", "MIT"],
+    "homepage": "https://github.com/BurntSushi/ripgrep",
+    "maintainers": ["globin"],
+    "platforms": ["x86_64-linux", "aarch64-darwin"],
+    "source_path": "pkgs/by-name/ri/ripgrep/package.nix",
+    "known_vulnerabilities": null
+  },
+  {
+    "id": 1612001,
+    "name": "ripgrep",
+    "version": "14.1.1",
+    "first_commit_hash": "aa11bb22",
+    "first_commit_date": "2025-01-02T00:00:00Z",
+    "last_commit_hash": "bb22cc33",
+    "last_commit_date": "2026-07-15T00:00:00Z",
+    "attribute_path": "ripgrep",
+    "description": "Fast grep (older)",
+    "license": ["Unlicense", "MIT"],
+    "platforms": ["x86_64-linux"],
+    "known_vulnerabilities": null
+  },
+  {
+    "id": 1500000,
+    "name": "ripgrep-all",
+    "version": "0.10.6",
+    "last_commit_hash": "dd44ee55",
+    "last_commit_date": "2026-05-01T12:00:00Z",
+    "attribute_path": "ripgrep-all",
+    "description": null,
+    "license": ["AGPL-3.0-or-later"]
+  },
+  {
+    "id": 1400000,
+    "name": "steam",
+    "version": "1.0.0.81",
+    "last_commit_hash": "ff66aa77",
+    "last_commit_date": "2026-04-01T08:00:00Z",
+    "attribute_path": "steam",
+    "description": "Digital distribution platform",
+    "license": ["Unfree redistributable"],
+    "platforms": ["x86_64-linux"]
+  }
+]

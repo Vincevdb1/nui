@@ -64,9 +64,13 @@ pub fn is_unfree<S: AsRef<str>>(licenses: &[S]) -> bool {
 pub fn search(query: &str, reg: Option<&ChildRegistry>) -> Result<Vec<SearchPackage>> {
     let mut cmd = Command::new("nxv");
     cmd.args(["search", "-f", "json", "--sort", "date", query]);
-    let out = stdout("nxv", cmd, reg)?;
+    parse_search(&stdout("nxv", cmd, reg)?)
+}
+
+/// Parses `nxv search -f json` output, keeping the first (newest) entry per attribute.
+pub fn parse_search(json: &[u8]) -> Result<Vec<SearchPackage>> {
     let packages: Vec<NxvPackage> =
-        serde_json::from_slice(&out).map_err(|e| Error::Parse("nxv", e))?;
+        serde_json::from_slice(json).map_err(|e| Error::Parse("nxv", e))?;
 
     let mut seen = HashSet::new();
     Ok(packages
@@ -87,9 +91,13 @@ pub fn search(query: &str, reg: Option<&ChildRegistry>) -> Result<Vec<SearchPack
 pub fn versions(attr: &str) -> Result<Vec<VersionInfo>> {
     let mut cmd = Command::new("nxv");
     cmd.args(["search", "-e", attr, "--format", "json"]);
-    let out = stdout("nxv", cmd, None)?;
+    parse_versions(&stdout("nxv", cmd, None)?)
+}
+
+/// Parses `nxv search -e <attr> --format json` output into version history entries.
+pub fn parse_versions(json: &[u8]) -> Result<Vec<VersionInfo>> {
     let versions: Vec<NxvVersion> =
-        serde_json::from_slice(&out).map_err(|e| Error::Parse("nxv", e))?;
+        serde_json::from_slice(json).map_err(|e| Error::Parse("nxv", e))?;
 
     Ok(versions
         .into_iter()
@@ -135,7 +143,7 @@ pub fn update(mut progress: impl FnMut(String)) -> Result<ExitStatus> {
     child.wait().map_err(|e| Error::Spawn("nxv update", e))
 }
 
-fn strip_ansi(s: &str) -> String {
+pub fn strip_ansi(s: &str) -> String {
     let mut result = String::new();
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
@@ -152,7 +160,7 @@ fn strip_ansi(s: &str) -> String {
     result
 }
 
-fn compact_progress(line: &str) -> String {
+pub fn compact_progress(line: &str) -> String {
     let Some(start) = line.find('[') else {
         return line.to_string();
     };
@@ -177,80 +185,4 @@ fn compact_progress(line: &str) -> String {
         " ".repeat(10 - segments),
         line[end + 1..].trim()
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const NXV_SAMPLE: &str = r#"[
-      {
-        "id": 1769790,
-        "name": "ripgrep",
-        "version": "15.2.0",
-        "first_commit_hash": "d4a57f16",
-        "first_commit_date": "2026-07-16T00:20:00Z",
-        "last_commit_hash": "c8007378",
-        "last_commit_date": "2026-09-21T09:37:33Z",
-        "attribute_path": "ripgrep",
-        "description": "Fast grep",
-        "license": ["Unlicense", "MIT"],
-        "homepage": "https://github.com/BurntSushi/ripgrep",
-        "maintainers": ["globin"],
-        "platforms": ["x86_64-linux", "aarch64-darwin"],
-        "source_path": "pkgs/by-name/ri/ripgrep/package.nix",
-        "known_vulnerabilities": null
-      }
-    ]"#;
-
-    // Older nxv releases emitted these fields as stringified JSON arrays.
-    const NXV_LEGACY_SAMPLE: &str = r#"[
-      {
-        "name": "steam",
-        "version": "1.0",
-        "attribute_path": "steam",
-        "description": null,
-        "license": "[\"unfreeRedistributable\"]",
-        "platforms": "[\"x86_64-linux\"]",
-        "last_commit_hash": "abc",
-        "last_commit_date": "2026-09-21T09:37:33Z"
-      }
-    ]"#;
-
-    #[test]
-    fn parses_nxv_package_list() {
-        let pkgs: Vec<NxvPackage> = serde_json::from_str(NXV_SAMPLE).expect("parse NxvPackage");
-        assert_eq!(pkgs[0].attribute_path, "ripgrep");
-        assert_eq!(
-            pkgs[0].license.as_deref(),
-            Some(&["Unlicense".to_string(), "MIT".to_string()][..])
-        );
-        assert_eq!(
-            pkgs[0].platforms.as_deref(),
-            Some(&["x86_64-linux".to_string(), "aarch64-darwin".to_string()][..])
-        );
-    }
-
-    #[test]
-    fn parses_nxv_version_list() {
-        let results: Vec<NxvVersion> = serde_json::from_str(NXV_SAMPLE).expect("parse NxvVersion");
-        assert_eq!(results[0].version, "15.2.0");
-        assert_eq!(results[0].last_commit_hash, "c8007378");
-    }
-
-    #[test]
-    fn parses_legacy_stringified_arrays() {
-        let pkgs: Vec<NxvPackage> =
-            serde_json::from_str(NXV_LEGACY_SAMPLE).expect("parse legacy NxvPackage");
-        assert_eq!(
-            pkgs[0].platforms.as_deref(),
-            Some(&["x86_64-linux".to_string()][..])
-        );
-        let results: Vec<NxvVersion> =
-            serde_json::from_str(NXV_LEGACY_SAMPLE).expect("parse legacy NxvVersion");
-        assert_eq!(
-            results[0].license.as_deref(),
-            Some(&["unfreeRedistributable".to_string()][..])
-        );
-    }
 }

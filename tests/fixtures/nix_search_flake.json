@@ -1,0 +1,7 @@
+{
+  "packages.x86_64-linux.default": {
+    "description": "Program that produces a familiar, friendly greeting",
+    "pname": "hello",
+    "version": "2.12.2"
+  }
+}
