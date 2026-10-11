@@ -12,6 +12,7 @@ A modern Terminal User Interface (TUI) for the Nix package manager, designed to 
 
 ### Interactive Shells (Shell Mode)
 - **On-the-fly Environments**: Quickly spin up a Nix shell with specific packages without creating a permanent `flake.nix`.
+- **Custom Flake Search**: Add any flake (e.g. `github:owner/repo`) to the session and its packages show up in searches next to `nixpkgs`.
 
 ### Advanced Package Search
 - **Comprehensive Search**: Search for packages across `nixpkgs` (unstable/stable) and other channels.
@@ -59,6 +60,7 @@ nix run github:Vincevdb1/nui#nui-unwrapped
 - **a**: Add a new package or input (depending on focus).
 - **d**: Remove the selected package or input.
 - **i**: View detailed information for the selected package.
+- **f**: (Shell Mode) Manage extra flakes whose packages are included in searches.
 - **s**: (Shell Mode) Start a Nix shell with the selected packages.
 - **j / k** or **Arrows**: Navigate lists and tables.
 - **q / Esc**: Quit or close popups.

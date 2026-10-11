@@ -18,6 +18,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         popup,
         templates: template_list,
         flake,
+        shell: shell_state,
         system,
         mode,
         ..
@@ -30,11 +31,13 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         Popup::SaveTemplate(form) => templates::render_save(frame, form),
         Popup::AddInput(form) => add_input::render(frame, form),
         Popup::Details(result) => details::render(frame, result),
+        Popup::ShellFlakes(list) => shell::flakes::render(frame, list, &shell_state.flakes),
         Popup::Search(s) => {
             let system = system.as_ref();
             let ctx = search::view::Context {
                 shell_mode: *mode == Mode::Shell,
                 installed: &flake.packages,
+                flakes: &shell_state.flakes,
                 system_version: system.and_then(|i| i.nixpkgs_version.as_deref()),
                 system_rev: system.and_then(|i| i.nixpkgs_rev.as_deref()),
             };
@@ -45,7 +48,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
 
 fn footer_text(app: &App) -> &'static str {
     if app.mode == Mode::Shell {
-        return "a: Add | d: Remove | v: Version | i: Info | s: Start Shell | m: Mode | t: Templates | T: Save Template | j/k: Select | Space: Multi-select | ?: Help | q: Quit";
+        return "a: Add | d: Remove | f: Flakes | v: Version | i: Info | s: Start Shell | m: Mode | t: Templates | T: Save Template | j/k: Select | Space: Multi-select | ?: Help | q: Quit";
     }
     match app.focus {
         Focus::Title => {

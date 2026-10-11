@@ -2,7 +2,7 @@ use super::versions::{VersionItem, VersionPicker};
 use super::{Search, Stage};
 use crate::backend::search::SearchResult;
 use crate::features::details;
-use crate::flake::Package;
+use crate::flake::{Input, Package};
 use crate::ui::widgets::{
     channel_color, footer, highlight, placeholder, popup_frame, scrollbar, truncate, unfree_marker,
 };
@@ -11,6 +11,8 @@ use ratatui::{prelude::*, widgets::*};
 pub struct Context<'a> {
     pub shell_mode: bool,
     pub installed: &'a [Package],
+    /// The shell's custom flakes, searched next to nixpkgs.
+    pub flakes: &'a [Input],
     pub system_version: Option<&'a str>,
     pub system_rev: Option<&'a str>,
 }
@@ -36,15 +38,18 @@ pub fn render(frame: &mut Frame, s: &mut Search, ctx: &Context) {
     .margin(2)
     .areas(area);
 
-    frame.render_widget(
-        Paragraph::new(s.query.as_str()).block(
-            Block::default()
-                .title(" Search Query ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan)),
-        ),
-        query,
-    );
+    let mut query_block = Block::default()
+        .title(" Search Query ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+    if ctx.shell_mode {
+        let sources: Vec<&str> = std::iter::once(NIXPKGS)
+            .chain(ctx.flakes.iter().map(|f| f.name.as_str()))
+            .collect();
+        query_block = query_block
+            .title_top(Line::from(format!(" Sources: {} ", sources.join(", "))).right_aligned());
+    }
+    frame.render_widget(Paragraph::new(s.query.as_str()).block(query_block), query);
 
     let hint_text = match &s.stage {
         Stage::Versions(_) => "Enter: Select Version | Esc: Back to Search",
@@ -103,6 +108,7 @@ fn description(result: &SearchResult) -> Span<'static> {
 
 // One leading column covers the border, the ">> " highlight symbol and the unfree marker.
 const GUTTER: &str = "      ";
+const NIXPKGS: &str = "nixpkgs";
 
 fn render_results(frame: &mut Frame, area: Rect, s: &mut Search, ctx: &Context) {
     let title = if s.searching {
@@ -144,7 +150,9 @@ fn shell_columns(
 ) -> (Line<'static>, Vec<ListItem<'static>>) {
     let version = |r: &SearchResult| {
         let mut v = r.shell_version(ctx.system_version);
-        if r.hash.as_deref().unwrap_or("") != ctx.system_rev.unwrap_or("") {
+        if r.source_input.is_none()
+            && r.hash.as_deref().unwrap_or("") != ctx.system_rev.unwrap_or("")
+        {
             v.push_str(" 󰚰");
         }
         v
@@ -155,10 +163,34 @@ fn shell_columns(
         .max()
         .unwrap_or(0)
         .max(10);
+    // Hits from a custom flake are keyed `<flake>.<attr>`; the Source column names the flake.
+    fn source(r: &SearchResult) -> &str {
+        r.source_input.as_deref().unwrap_or(NIXPKGS)
+    }
+    let name = |r: &SearchResult| match &r.source_input {
+        Some(flake) => r
+            .name
+            .strip_prefix(&format!("{}.", flake))
+            .unwrap_or(&r.name)
+            .to_string(),
+        None => r.name.clone(),
+    };
+    let source_width = results
+        .iter()
+        .map(|r| source(r).chars().count())
+        .max()
+        .unwrap_or(0)
+        .max(NIXPKGS.len());
 
-    let header = Line::from(vec![
-        Span::raw(GUTTER),
-        bold(format!("{:name_width$}", "Name")),
+    // Only worth a column when there is something other than nixpkgs to tell apart.
+    let show_source = !ctx.flakes.is_empty();
+
+    let mut header = vec![Span::raw(GUTTER), bold(format!("{:name_width$}", "Name"))];
+    if show_source {
+        header.push(Span::raw(" | "));
+        header.push(bold(format!("{:source_width$}", "Source")));
+    }
+    header.extend([
         Span::raw(" | "),
         Span::styled(
             format!("{:version_width$}", "Version"),
@@ -172,9 +204,21 @@ fn shell_columns(
     let items = results
         .iter()
         .map(|r| {
-            ListItem::new(Line::from(vec![
+            let mut spans = vec![
                 unfree_marker(r.is_unfree),
-                bold(format!("{:name_width$}", r.name)),
+                bold(format!("{:name_width$}", name(r))),
+            ];
+            if show_source {
+                let style = match &r.source_input {
+                    Some(flake) => Style::default()
+                        .fg(channel_color(flake))
+                        .add_modifier(Modifier::BOLD),
+                    None => Style::default().fg(Color::DarkGray),
+                };
+                spans.push(Span::raw(" | "));
+                spans.push(Span::styled(format!("{:source_width$}", source(r)), style));
+            }
+            spans.extend([
                 Span::raw(" | "),
                 Span::styled(
                     format!("{:version_width$}", version(r)),
@@ -182,10 +226,11 @@ fn shell_columns(
                 ),
                 Span::raw(" | "),
                 description(r),
-            ]))
+            ]);
+            ListItem::new(Line::from(spans))
         })
         .collect();
-    (header, items)
+    (Line::from(header), items)
 }
 
 fn channel_columns(

@@ -123,3 +123,27 @@ fn references_are_equal_by_source_attr_and_version() {
         PackageRef::new(Source::Nixpkgs("x".into()), "hello", None)
     );
 }
+
+fn flake_source() -> Source {
+    Source::Flake {
+        name: "nixvim".into(),
+        url: "github:nix-community/nixvim".into(),
+    }
+}
+
+#[test]
+fn flake_packages_install_from_their_flake() {
+    let r = PackageRef::new(flake_source(), "default", Some("0.1".into()));
+    assert_eq!(
+        r.installable(&system(None, Some("25.11.1"))),
+        "github:nix-community/nixvim#default"
+    );
+    assert_eq!(r.rev(), None);
+}
+
+#[test]
+fn flake_packages_are_named_after_their_flake() {
+    let r = PackageRef::new(flake_source(), "default", Some("0.1".into()));
+    assert_eq!(r.short_name(), "nixvim#default@0.1");
+    assert_eq!(r.to_string(), "github:nix-community/nixvim#default@0.1");
+}

@@ -72,8 +72,12 @@ impl SearchResult {
 }
 
 pub enum Scope {
-    /// nxv history plus the channel matching the system nixpkgs.
-    Shell { system_channel: String },
+    /// nxv history plus the channel matching the system nixpkgs, and the flakes the user
+    /// added to the shell.
+    Shell {
+        system_channel: String,
+        flakes: Vec<Input>,
+    },
     /// The flake's nixpkgs channels, its other inputs and the flake itself.
     Flake {
         channels: Vec<String>,
@@ -96,6 +100,7 @@ impl Request {
         let scope = if shell_mode {
             Scope::Shell {
                 system_channel: system_version.unwrap_or("nixos-unstable").to_string(),
+                flakes: inputs.to_vec(),
             }
         } else {
             let mut channels: Vec<String> = inputs
@@ -119,7 +124,7 @@ impl Request {
     /// Channels shown as version columns.
     pub fn channels(&self) -> Vec<String> {
         match &self.scope {
-            Scope::Shell { system_channel } => {
+            Scope::Shell { system_channel, .. } => {
                 let mut channels = vec!["nxv".to_string(), system_channel.clone()];
                 channels.sort();
                 channels.dedup();
@@ -170,7 +175,7 @@ pub fn run(
     };
 
     match &request.scope {
-        Scope::Shell { .. } => {
+        Scope::Shell { flakes, .. } => {
             let jobs = request
                 .channels()
                 .into_iter()
@@ -186,6 +191,20 @@ pub fn run(
                 .collect();
             collect(jobs, &mut |source, pkg, results| {
                 merge_shell(results, source, pkg)
+            });
+
+            let jobs = flakes
+                .iter()
+                .map(|flake| {
+                    let (q, r, url) = (query.clone(), reg.clone(), flake.url.clone());
+                    spawn(flake.name.clone(), move || {
+                        nix::search_flake(&url, &q, Some(&r))
+                    })
+                })
+                .collect();
+            collect(jobs, &mut |source, mut pkg, results| {
+                pkg.attribute = flake_attr(&pkg.attribute).to_string();
+                merge_flake(results, source, true, pkg)
             });
             let mut sorted = sorted(results, query);
             add_system_versions(&mut sorted, reg);
@@ -272,6 +291,16 @@ pub fn merge_shell(results: &mut HashMap<String, SearchResult>, source: &str, pk
     }
 }
 
+/// The attribute `nix shell <flake>#<attr>` takes for a `nix search` attribute path, which
+/// starts with the output and system (`packages.x86_64-linux.`).
+pub fn flake_attr(attribute: &str) -> &str {
+    let mut parts = attribute.splitn(3, '.');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some("packages" | "legacyPackages"), Some(_), Some(attr)) => attr,
+        _ => attribute,
+    }
+}
+
 /// Folds a flake-scope search hit into its result; hits from inputs (and `self`) are keyed
 /// as `<input>.<attr>` so they stay separate from nixpkgs packages.
 pub fn merge_flake(
@@ -333,9 +362,14 @@ pub fn sorted(results: HashMap<String, SearchResult>, query: &str) -> Vec<Search
 
 /// Puts the system nixpkgs version first for the top results, which the shell uses.
 fn add_system_versions(results: &mut [SearchResult], reg: &ChildRegistry) {
-    let top: Vec<String> = results.iter().take(50).map(|r| r.name.clone()).collect();
-    let versions = nix::system_versions(&top, Some(reg));
-    for result in results.iter_mut().take(50) {
+    let top = || results.iter().take(50).filter(|r| r.source_input.is_none());
+    let names: Vec<String> = top().map(|r| r.name.clone()).collect();
+    let versions = nix::system_versions(&names, Some(reg));
+    for result in results
+        .iter_mut()
+        .take(50)
+        .filter(|r| r.source_input.is_none())
+    {
         let Some(version) = versions.get(&result.name).filter(|v| *v != "Unknown") else {
             continue;
         };

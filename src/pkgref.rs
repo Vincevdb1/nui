@@ -9,6 +9,8 @@ pub enum Source {
     Nixpkgs(String),
     /// Whatever the `nixpkgs` registry entry points to.
     Registry,
+    /// A flake the user added to the shell's search, shown under `name`.
+    Flake { name: String, url: String },
 }
 
 /// A package added to an ad-hoc shell.
@@ -31,7 +33,7 @@ impl PackageRef {
     pub fn rev(&self) -> Option<&str> {
         match &self.source {
             Source::System(rev) | Source::Nixpkgs(rev) => Some(rev),
-            Source::Registry => None,
+            Source::Registry | Source::Flake { .. } => None,
         }
     }
 
@@ -53,6 +55,7 @@ impl PackageRef {
             }
             Source::Nixpkgs(rev) => format!("github:NixOS/nixpkgs/{}#{}", rev, self.attr),
             Source::Registry => format!("nixpkgs#{}", self.attr),
+            Source::Flake { url, .. } => format!("{}#{}", url, self.attr),
         }
     }
 
@@ -63,6 +66,7 @@ impl PackageRef {
             Source::System(rev) => format!("{}#{}", short(rev), self.attr),
             Source::Nixpkgs(rev) => format!("nixpkgs/{}#{}", short(rev), self.attr),
             Source::Registry => self.attr.clone(),
+            Source::Flake { name, .. } => format!("{}#{}", name, self.attr),
         };
         match &self.version {
             Some(v) => format!("{}@{}", base, v),
@@ -89,6 +93,7 @@ impl fmt::Display for PackageRef {
             Source::System(rev) => write!(f, "system/{}#", rev)?,
             Source::Nixpkgs(rev) => write!(f, "nixpkgs/{}#", rev)?,
             Source::Registry => {}
+            Source::Flake { url, .. } => write!(f, "{}#", url)?,
         }
         write!(f, "{}", self.attr)?;
         if let Some(v) = &self.version {

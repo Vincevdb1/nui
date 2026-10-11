@@ -124,12 +124,12 @@ pub fn tick(app: &mut App) {
         .system
         .as_ref()
         .and_then(|i| i.nixpkgs_version.as_deref());
-    let request = search::Request::new(
-        s.query.clone(),
-        shell_mode,
-        &app.flake.inputs,
-        system_version,
-    );
+    let inputs = if shell_mode {
+        &app.shell.flakes
+    } else {
+        &app.flake.inputs
+    };
+    let request = search::Request::new(s.query.clone(), shell_mode, inputs, system_version);
     s.channels = request.channels();
     app.effects.push(Effect::Search {
         generation: app.search_generation.bump(),

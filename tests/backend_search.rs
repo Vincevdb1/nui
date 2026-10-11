@@ -1,5 +1,6 @@
 use nui::backend::search::{
-    ChannelVersion, Request, Scope, SearchPackage, SearchResult, merge_flake, merge_shell, sorted,
+    ChannelVersion, Request, Scope, SearchPackage, SearchResult, flake_attr, merge_flake,
+    merge_shell, sorted,
 };
 use nui::flake::Input;
 use std::collections::HashMap;
@@ -35,7 +36,7 @@ fn channels(result: &SearchResult) -> Vec<(&str, &str)> {
 fn shell_requests_search_nxv_and_the_system_channel() {
     let request = Request::new("rg".into(), true, &[], Some("25.11.123.abc"));
     assert!(
-        matches!(&request.scope, Scope::Shell { system_channel } if system_channel == "25.11.123.abc")
+        matches!(&request.scope, Scope::Shell { system_channel, .. } if system_channel == "25.11.123.abc")
     );
     assert_eq!(request.channels(), ["25.11.123.abc", "nxv"]);
 
@@ -258,4 +259,30 @@ fn shell_version_prefers_system_then_the_system_channel() {
     assert_eq!(r.shell_version(None), "3");
 
     assert_eq!(with_versions(&[]).shell_version(None), "Unknown");
+}
+
+#[test]
+fn shell_requests_carry_the_custom_flakes() {
+    let flakes = [input("nixvim", "github:nix-community/nixvim")];
+    let request = Request::new("vim".into(), true, &flakes, Some("25.11.123.abc"));
+    match &request.scope {
+        Scope::Shell { flakes: scoped, .. } => assert_eq!(scoped, &flakes),
+        Scope::Flake { .. } => panic!("expected a shell scope"),
+    }
+    assert_eq!(
+        request.channels(),
+        ["25.11.123.abc", "nxv"],
+        "custom flakes don't add version columns"
+    );
+}
+
+#[test]
+fn flake_attrs_drop_the_output_and_system() {
+    assert_eq!(flake_attr("packages.x86_64-linux.default"), "default");
+    assert_eq!(
+        flake_attr("legacyPackages.aarch64-darwin.python3Packages.requests"),
+        "python3Packages.requests"
+    );
+    assert_eq!(flake_attr("hello"), "hello");
+    assert_eq!(flake_attr("packages.x86_64-linux"), "packages.x86_64-linux");
 }
