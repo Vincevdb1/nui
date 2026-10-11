@@ -110,6 +110,22 @@ fn add_to_outputs_pattern(src: &str, name: &str) -> String {
         return src.to_string();
     };
 
+    // Nothing may follow `...`, so the entry goes in front of it.
+    if let Some(ellipsis) = pattern
+        .children_with_tokens()
+        .filter_map(|c| c.into_token())
+        .find(|t| t.kind() == SyntaxKind::TOKEN_ELLIPSIS)
+    {
+        let separator =
+            whitespace_before(&ellipsis).map_or(" ".to_string(), |w| w.text().to_string());
+        let mut result = src.to_string();
+        result.insert_str(
+            usize::from(ellipsis.text_range().start()),
+            &format!("{},{}", name, separator),
+        );
+        return result;
+    }
+
     let ws = whitespace_before(&close);
     let has_entries = pattern.children_with_tokens().any(|c| is_entry(&c));
     let is_multiline = pattern
@@ -132,7 +148,7 @@ fn add_to_outputs_pattern(src: &str, name: &str) -> String {
         let closing_indent = last_line(ws.as_ref());
 
         let insertion = match (trailing_comma, has_entries) {
-            (true, _) => format!("{}{},\n{}", entry_indent, name, closing_indent),
+            (true, _) => format!("\n{}{},\n{}", entry_indent, name, closing_indent),
             (false, true) => format!(",\n{}{},\n{}", entry_indent, name, closing_indent),
             (false, false) => format!("\n{}{},\n{}", entry_indent, name, closing_indent),
         };
@@ -172,6 +188,19 @@ fn remove_from_outputs_pattern(src: &str, name: &str) -> String {
     match next_significant(entry.next_sibling_or_token()) {
         Some(NodeOrToken::Token(t)) if t.kind() == SyntaxKind::TOKEN_COMMA => {
             end = t.text_range().end();
+            // Take the separating whitespace along, so no gap is left behind.
+            let before = entry
+                .prev_sibling_or_token()
+                .filter(|p| p.kind() == SyntaxKind::TOKEN_WHITESPACE);
+            let after = t
+                .next_sibling_or_token()
+                .filter(|n| n.kind() == SyntaxKind::TOKEN_WHITESPACE)
+                .filter(|n| !n.to_string().contains('\n'));
+            if let Some(before) = before {
+                start = before.text_range().start();
+            } else if let Some(after) = after {
+                end = after.text_range().end();
+            }
         }
         _ => {
             if let Some(comma) = prev_significant(entry.prev_sibling_or_token())

@@ -1,5 +1,5 @@
 use super::EditError;
-use super::ast::{outputs_pattern, package_lists, replace_in_lists, shell_set};
+use super::ast::{is_with_list, outputs_pattern, package_lists, replace_in_lists, shell_set};
 use super::inputs::{add_input, remove_input};
 use super::packages::input_is_used;
 use crate::flake::model::{Input, ShellTarget};
@@ -29,28 +29,27 @@ pub fn pin_package(
         .ok_or_else(|| EditError::Unlocked(input.name.clone()))?;
 
     let pinned_input = format!("{}-{}", input.name, attr).replace('.', "-");
-    let mut result = bind_inputs(&add_input(src, &pinned_input, &pinned_url(input, rev)));
-
     let pinned_ref = format!(
         "inputs.{}.legacyPackages.${{system}}.{}",
         pinned_input, attr
     );
-    let root = Root::parse(&result).syntax();
-    if let Some(set) = shell_set(&root, target) {
-        let lists = package_lists(&set);
-        for candidate in [attr.to_string(), format!("pkgs.{}", attr), pkg.to_string()] {
-            let replaced = replace_in_lists(&lists, &candidate, &pinned_ref, &result);
-            if replaced != result {
-                result = replaced;
-                break;
-            }
-        }
-    }
 
-    if result == src {
-        return Err(EditError::PackageNotFound(pkg.to_string()));
-    }
-    Ok(result)
+    // The list item is replaced first so a package that isn't listed adds no input.
+    let root = Root::parse(src).syntax();
+    let lists = shell_set(&root, target)
+        .map(|set| package_lists(&set))
+        .unwrap_or_default();
+    let replaced = [attr.to_string(), format!("pkgs.{}", attr), pkg.to_string()]
+        .iter()
+        .map(|candidate| replace_in_lists(&lists, candidate, |_| pinned_ref.clone(), src))
+        .find(|replaced| replaced != src)
+        .ok_or_else(|| EditError::PackageNotFound(pkg.to_string()))?;
+
+    Ok(bind_inputs(&add_input(
+        &replaced,
+        &pinned_input,
+        &pinned_url(input, rev),
+    )))
 }
 
 /// Binds the outputs pattern as `inputs@{ ... }` so pinned refs can reach their input.
@@ -100,7 +99,16 @@ pub fn unpin_package(src: &str, target: &ShellTarget, pkg: &str) -> Result<Strin
 
     let root = Root::parse(src).syntax();
     let mut result = match shell_set(&root, target) {
-        Some(set) => replace_in_lists(&package_lists(&set), pkg, attr, src),
+        // A bare attribute only resolves inside `with pkgs;`.
+        Some(set) => replace_in_lists(
+            &package_lists(&set),
+            pkg,
+            |list| match is_with_list(list) {
+                true => attr.to_string(),
+                false => format!("pkgs.{}", attr),
+            },
+            src,
+        ),
         None => src.to_string(),
     };
     if result == src {

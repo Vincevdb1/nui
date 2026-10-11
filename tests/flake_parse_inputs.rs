@@ -68,7 +68,6 @@ fn a_flake_without_inputs_has_none() {
 }
 
 #[test]
-#[ignore = "known bug: nix_editor::parse::get_collection panics on unparsable source"]
 fn unparsable_source_gives_no_inputs() {
     assert!(parse::inputs("{ inputs = ", None).is_empty());
 }

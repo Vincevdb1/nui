@@ -35,7 +35,7 @@ fn append_to_list(list: &SyntaxNode, pkg: &str, src: &str) -> Option<String> {
             format!("\n{}{}\n{}", indent, pkg, closing_indent)
         }
         None if list.children().next().is_none() => format!(" {} ", pkg),
-        None => format!(" {}", pkg),
+        None => format!(" {}{}", pkg, ws.as_ref().map_or("", |w| w.text())),
     };
 
     let start = ws.as_ref().unwrap_or(&close).text_range().start();

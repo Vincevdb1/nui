@@ -29,6 +29,10 @@ struct LockOriginal {
 
 pub fn inputs(flake_nix: &str, flake_lock: Option<&str>) -> Vec<Input> {
     let lock: Option<LockFile> = flake_lock.and_then(|c| serde_json::from_str(c).ok());
+    // nix_editor panics on bindings without a value, so unparsable source is rejected first.
+    if !Root::parse(flake_nix).errors().is_empty() {
+        return Vec::new();
+    }
     let Ok(collection) = nix_editor::parse::get_collection(flake_nix.to_string()) else {
         return Vec::new();
     };

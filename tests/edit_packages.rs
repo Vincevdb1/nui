@@ -55,7 +55,6 @@ fn appends_to_the_first_list_of_a_shell_with_several() {
 }
 
 #[test]
-#[ignore = "known bug: appending to an inline list drops the space before `]`"]
 fn appends_to_an_inline_list_keeping_it_inline() {
     let edited = edit::add_package(&flake_src("flat-paths"), &x86("native"), "pkgs.cmake").unwrap();
     assert!(
@@ -82,7 +81,6 @@ fn creates_a_packages_list_when_the_shell_has_none() {
 }
 
 #[test]
-#[ignore = "known bug: a packages list added to an empty `mkShell { }` is mis-indented"]
 fn creates_a_packages_list_with_matching_indentation() {
     let edited = edit::add_package(&flake_src("flat-paths"), &x86("empty"), "pkgs.hello").unwrap();
     assert!(

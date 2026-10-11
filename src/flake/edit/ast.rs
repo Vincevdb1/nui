@@ -169,20 +169,35 @@ pub fn list_items<'a>(list: &SyntaxNode, pkg: &'a str) -> impl Iterator<Item = S
     })
 }
 
-pub fn replace_in_lists(lists: &[SyntaxNode], old_pkg: &str, new_pkg: &str, src: &str) -> String {
-    let mut ranges: Vec<_> = lists
+/// Replaces every `old_pkg` item, asking `new_pkg` what to write in each list.
+pub fn replace_in_lists(
+    lists: &[SyntaxNode],
+    old_pkg: &str,
+    new_pkg: impl Fn(&SyntaxNode) -> String,
+    src: &str,
+) -> String {
+    let mut edits: Vec<_> = lists
         .iter()
-        .flat_map(|list| list_items(list, old_pkg).map(|item| item.text_range()))
+        .flat_map(|list| {
+            let replacement = new_pkg(list);
+            list_items(list, old_pkg).map(move |item| (item.text_range(), replacement.clone()))
+        })
         .collect();
-    ranges.sort_by_key(|r| r.start());
+    edits.sort_by_key(|(range, _)| range.start());
     let mut result = src.to_string();
-    for range in ranges.into_iter().rev() {
+    for (range, replacement) in edits.into_iter().rev() {
         result.replace_range(
             usize::from(range.start())..usize::from(range.end()),
-            new_pkg,
+            &replacement,
         );
     }
     result
+}
+
+/// Whether the list is the body of a `with ...;`, where bare attributes resolve.
+pub fn is_with_list(list: &SyntaxNode) -> bool {
+    list.parent()
+        .is_some_and(|p| p.kind() == SyntaxKind::NODE_WITH)
 }
 
 pub fn last_token(node: &SyntaxNode, text: &str) -> Option<SyntaxToken> {
@@ -204,6 +219,15 @@ pub fn last_line(ws: Option<&SyntaxToken>) -> String {
         .unwrap_or_default()
 }
 
+/// Leading whitespace of the line containing `offset`.
+fn line_indent(src: &str, offset: usize) -> String {
+    let line_start = src[..offset].rfind('\n').map_or(0, |i| i + 1);
+    src[line_start..]
+        .chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .collect()
+}
+
 /// Indentation of the first binding in a set, or `fallback` when it has none.
 pub fn binding_indent(set: &SyntaxNode, fallback: &str) -> String {
     set.children()
@@ -222,8 +246,15 @@ pub fn append_to_set(set: &SyntaxNode, entry: &str, src: &str) -> Option<String>
     let close = last_token(set, "}")?;
     let ws = whitespace_before(&close);
     let start = ws.as_ref().unwrap_or(&close).text_range().start();
-    let indent = binding_indent(set, "    ");
-    let replacement = format!("\n{}{}\n{}}}", indent, entry, last_line(ws.as_ref()));
+    let multiline = ws.as_ref().is_some_and(|w| w.text().contains('\n'));
+    let (indent, closing_indent) = if multiline {
+        (binding_indent(set, "    "), last_line(ws.as_ref()))
+    } else {
+        // An inline set has no indentation of its own, so it follows the line it starts on.
+        let base = line_indent(src, usize::from(set.text_range().start()));
+        (format!("{}  ", base), base)
+    };
+    let replacement = format!("\n{}{}\n{}}}", indent, entry, closing_indent);
     let mut result = src.to_string();
     result.replace_range(
         usize::from(start)..usize::from(close.text_range().end()),

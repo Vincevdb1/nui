@@ -97,7 +97,6 @@ fn pinning_without_a_nixpkgs_input_fails() {
 }
 
 #[test]
-#[ignore = "known bug: pinning a package that isn't listed still adds an input"]
 fn pinning_an_absent_package_leaves_the_flake_alone() {
     assert!(matches!(
         pin_flat("pkgs.nonexistent"),
@@ -118,7 +117,6 @@ fn unpinning_restores_the_package_and_drops_the_input() {
 }
 
 #[test]
-#[ignore = "known bug: unpin writes a bare attribute, which is unbound outside `with pkgs;`"]
 fn unpinning_writes_a_reference_that_resolves() {
     let edited = edit::unpin_package(&flake_src("pinned"), &x86("default"), PINNED_HELLO).unwrap();
     assert!(
@@ -128,7 +126,6 @@ fn unpinning_writes_a_reference_that_resolves() {
 }
 
 #[test]
-#[ignore = "known bug: unpin writes a bare attribute, which is unbound outside `with pkgs;`"]
 fn pin_then_unpin_restores_the_original() {
     let src = flake_src("flat-paths");
     let pinned = pin_flat("pkgs.git").unwrap();

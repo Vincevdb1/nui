@@ -29,7 +29,6 @@ fn adds_to_the_inputs_set_and_a_single_line_pattern() {
 }
 
 #[test]
-#[ignore = "known bug: the new entry lands on the previous entry's line"]
 fn adds_to_a_multiline_pattern_with_a_trailing_comma() {
     let edited = edit::add_input(&flake_src("devshells"), "unstable", UNSTABLE);
     assert_parses(&edited);
@@ -51,7 +50,6 @@ fn adds_to_a_multiline_pattern_without_a_trailing_comma() {
 }
 
 #[test]
-#[ignore = "known bug: the entry is added after `...`, which is invalid Nix"]
 fn adds_before_an_ellipsis() {
     let edited = edit::add_input(&flake_src("home-manager"), "unstable", UNSTABLE);
     assert_parses(&edited);
@@ -96,7 +94,6 @@ fn removes_an_input_and_its_nested_attributes() {
 }
 
 #[test]
-#[ignore = "known bug: removing a middle pattern entry leaves a double space"]
 fn removes_a_middle_pattern_entry_cleanly() {
     let edited = edit::remove_input(&flake_src("home-manager"), "home-manager");
     assert!(edited.contains("{ nixpkgs, ... }:"), "{edited}");
