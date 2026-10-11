@@ -1,5 +1,6 @@
 use crate::app::{App, Effect, Mode, Popup};
 use crate::backend::templates::Template;
+use crate::pkgref::Source;
 use crate::ui::widgets::{Selectable, footer, popup_frame, ruled_header, text_field};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
@@ -92,6 +93,8 @@ pub fn save_key(app: &mut App, mut form: SaveTemplate, key: KeyEvent) -> Popup {
                     .shell
                     .packages
                     .iter()
+                    // Templates only know nixpkgs attributes.
+                    .filter(|p| !matches!(p.reference.source, Source::Flake { .. }))
                     .map(|p| p.reference.attr.clone())
                     .collect(),
             });

@@ -66,6 +66,7 @@ fn on_key(app: &mut App, key: KeyEvent) {
         Popup::AddInput(form) => add_input::on_key(app, form, key),
         Popup::Search(s) => search::on_key(app, s, key),
         Popup::Details(result) => details::on_key(result, key),
+        Popup::ShellFlakes(list) => shell::flakes::on_key(app, list, key),
     };
 }
 

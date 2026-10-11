@@ -1,8 +1,10 @@
+pub mod flakes;
 pub mod keys;
 pub mod view;
 
 use crate::app::{App, Effect};
 use crate::backend::nix::Metadata;
+use crate::flake::Input;
 use crate::pkgref::{PackageRef, Source};
 use ratatui::widgets::TableState;
 use std::collections::HashSet;
@@ -18,6 +20,8 @@ pub struct ShellState {
     pub packages: Vec<ShellPackage>,
     pub table: TableState,
     pub marked: HashSet<usize>,
+    /// Extra flakes whose packages show up in searches, for this session.
+    pub flakes: Vec<Input>,
 }
 
 impl ShellState {
@@ -86,4 +90,22 @@ pub fn add_from_template(app: &mut App, attrs: Vec<String>) {
             app.effects.push(Effect::ShellMetadata(reference));
         }
     }
+}
+
+/// A short name for a flake reference: the repository for forge references, otherwise the
+/// last path segment.
+pub fn flake_name(url: &str) -> String {
+    let url = url.split(['?', '#']).next().unwrap_or(url);
+    let (scheme, path) = url.split_once(':').unwrap_or(("", url));
+    let mut segments = path.split('/').filter(|s| !s.is_empty() && *s != ".");
+    let segment = if matches!(scheme, "github" | "gitlab" | "sourcehut") {
+        segments.nth(1)
+    } else {
+        segments.next_back()
+    };
+    segment
+        .map(|s| s.strip_suffix(".git").unwrap_or(s))
+        .filter(|s| !s.is_empty())
+        .unwrap_or("flake")
+        .to_string()
 }

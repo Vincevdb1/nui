@@ -2,6 +2,7 @@ use super::versions::{VersionItem, VersionPicker};
 use super::{Search, Stage, close};
 use crate::app::effect::{FlakeEdit, input_package};
 use crate::app::{App, Effect, Mode, Popup};
+use crate::backend::search::SearchResult;
 use crate::features::add_input;
 use crate::features::shell::ShellPackage;
 use crate::pkgref::{PackageRef, Source};
@@ -34,7 +35,10 @@ fn results_key(app: &mut App, mut s: Search, key: KeyEvent) -> Popup {
             q.pop();
         }),
         KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
-            if let Some(result) = s.selected() {
+            // nxv only has history for nixpkgs, not for the shell's custom flakes.
+            let custom_flake =
+                |r: &SearchResult| app.mode == Mode::Shell && r.source_input.is_some();
+            if let Some(result) = s.selected().filter(|r| !custom_flake(r)) {
                 let picker = VersionPicker::new(
                     result.name.clone(),
                     result.description.clone(),
@@ -62,6 +66,7 @@ fn add_selected(app: &mut App, s: &Search) {
         return;
     };
     match app.mode {
+        Mode::Shell if result.source_input.is_some() => add_from_flake(app, result),
         Mode::Shell => {
             let version = result.shell_version(app.system_version());
             let source = match (app.system_rev(), &result.hash) {
@@ -81,6 +86,32 @@ fn add_selected(app: &mut App, s: &Search) {
         }
         Mode::Flake => add_to_flake(app, result.name.clone()),
     }
+}
+
+/// Adds a hit from one of the shell's custom flakes, which is named `<flake>.<attr>`.
+fn add_from_flake(app: &mut App, result: &SearchResult) {
+    let Some(flake) = app
+        .shell
+        .flakes
+        .iter()
+        .find(|f| Some(&f.name) == result.source_input.as_ref())
+    else {
+        return;
+    };
+    let attr = result
+        .name
+        .strip_prefix(&format!("{}.", flake.name))
+        .unwrap_or(&result.name);
+    let source = Source::Flake {
+        name: flake.name.clone(),
+        url: flake.url.clone(),
+    };
+    let version = result.versions.first().map(|v| v.version.clone());
+    app.shell.add(ShellPackage {
+        reference: PackageRef::new(source, attr, version),
+        description: result.description.clone(),
+        is_unfree: result.is_unfree,
+    });
 }
 
 fn add_to_flake(app: &mut App, package: String) {

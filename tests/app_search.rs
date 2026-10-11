@@ -5,9 +5,10 @@ use nui::app::effect::FlakeEdit;
 use nui::app::update::update;
 use nui::app::{Action, App, Effect, Generation, Mode, Popup};
 use nui::backend::nxv::VersionInfo;
-use nui::backend::search::{ChannelVersion, SearchResult};
+use nui::backend::search::{ChannelVersion, Scope, SearchResult};
 use nui::backend::system::SystemInfo;
 use nui::features::search::{self, Search, Stage};
+use nui::flake::Input;
 use nui::pkgref::Source;
 use ratatui::crossterm::event::KeyCode;
 use std::time::Duration;
@@ -446,4 +447,74 @@ fn picking_a_historical_version_in_flake_mode_offers_a_new_input() {
         _ => panic!("expected the add-input form"),
     }
     assert_eq!(app.mode, Mode::Flake);
+}
+
+fn flake_result(name: &str, input: &str, version: &str) -> SearchResult {
+    SearchResult {
+        source_input: Some(input.to_string()),
+        ..result(name, &[(input, version)], None)
+    }
+}
+
+fn shell_with_flake() -> App {
+    let mut app = shell_with_system(Some("sysrev"));
+    app.shell.flakes.push(Input {
+        name: "nixvim".into(),
+        url: "github:nix-community/nixvim".into(),
+        ..Default::default()
+    });
+    app
+}
+
+#[test]
+fn shell_searches_include_the_custom_flakes() {
+    let mut app = open(shell_with_flake());
+    type_text(&mut app, "vim");
+    std::thread::sleep(DEBOUNCE);
+    update(&mut app, Action::Tick);
+    match app.effects.as_slice() {
+        [Effect::Search { request, .. }] => match &request.scope {
+            Scope::Shell { flakes, .. } => assert_eq!(flakes, &app.shell.flakes),
+            Scope::Flake { .. } => panic!("expected a shell scope"),
+        },
+        _ => panic!("expected one Search effect"),
+    }
+}
+
+#[test]
+fn enter_on_a_custom_flake_result_adds_it_from_that_flake() {
+    let mut app = with_results(
+        shell_with_flake(),
+        vec![flake_result("nixvim.default", "nixvim", "0.1")],
+    );
+    press(&mut app, key(KeyCode::Enter));
+    assert!(matches!(app.popup, Popup::None));
+    let added = &app.shell.packages[0];
+    assert_eq!(
+        added.reference.source,
+        Source::Flake {
+            name: "nixvim".into(),
+            url: "github:nix-community/nixvim".into(),
+        }
+    );
+    assert_eq!(added.reference.attr, "default");
+    assert_eq!(added.reference.version.as_deref(), Some("0.1"));
+    assert_eq!(added.description, "nixvim.default description");
+    assert!(
+        !app.effects
+            .iter()
+            .any(|e| matches!(e, Effect::ShellMetadata(_))),
+        "nix-env knows nothing about custom flakes"
+    );
+}
+
+#[test]
+fn custom_flake_results_have_no_version_history() {
+    let mut app = with_results(
+        shell_with_flake(),
+        vec![flake_result("nixvim.default", "nixvim", "0.1")],
+    );
+    press(&mut app, alt_enter());
+    assert!(matches!(search(&app).stage, Stage::Results));
+    assert!(app.effects.is_empty());
 }

@@ -10,7 +10,7 @@ pub fn on_key(key: KeyEvent) -> Popup {
     }
 }
 
-const KEYBINDS: [(&str, &str); 17] = [
+const KEYBINDS: [(&str, &str); 18] = [
     ("?", "Show this help"),
     ("q", "Quit application"),
     ("m", "Switch Mode (Flake/Shell)"),
@@ -21,6 +21,7 @@ const KEYBINDS: [(&str, &str); 17] = [
     ("j/k", "Navigate list / Scroll"),
     ("Enter", "Select / Toggle / Add"),
     ("Esc", "Close popup / Back"),
+    ("f", "Manage searched flakes (Shell Mode)"),
     ("v", "Change package version (Shell Mode)"),
     ("p", "Pin/Unpin package (Flake Mode)"),
     ("s", "Start shell (Shell Mode)"),

@@ -1,5 +1,6 @@
 use crate::app::{App, Exit, Popup};
 use crate::features::{details, search, templates};
+use crate::pkgref::Source;
 use crate::ui::widgets::Selectable;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
@@ -7,10 +8,14 @@ pub fn on_key(app: &mut App, key: KeyEvent) {
     let shell = &mut app.shell;
     match key.code {
         KeyCode::Char('a') => search::open(app),
+        KeyCode::Char('f') => super::flakes::open(app),
         KeyCode::Char('s') => app.exit = Some(Exit::Shell(shell.references())),
         KeyCode::Char('T') => templates::open_save(app),
         KeyCode::Char('v') => {
-            if let Some(i) = shell.selected() {
+            // nxv only has history for nixpkgs.
+            if let Some(i) = shell.selected()
+                && !matches!(shell.packages[i].reference.source, Source::Flake { .. })
+            {
                 search::open_versions(app, i);
             }
         }

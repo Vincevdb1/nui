@@ -1,13 +1,19 @@
 use crate::app::App;
+use crate::pkgref::Source;
 use crate::ui::widgets::{highlight, mark_marker, panel, ruled_header, scrollbar};
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
-    let block = panel(" Shell: Packages ", true).border_style(
+    let mut block = panel(" Shell: Packages ", true).border_style(
         Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD),
     );
+    if !app.shell.flakes.is_empty() {
+        let names: Vec<&str> = app.shell.flakes.iter().map(|f| f.name.as_str()).collect();
+        block =
+            block.title_top(Line::from(format!(" Flakes: {} ", names.join(", "))).right_aligned());
+    }
     let area = {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -18,7 +24,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     if shell.packages.is_empty() {
         let [_, middle, _] = Layout::vertical([
             Constraint::Percentage(45),
-            Constraint::Min(3),
+            Constraint::Min(4),
             Constraint::Percentage(45),
         ])
         .areas(area);
@@ -27,6 +33,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
                 Line::raw("No packages added yet."),
                 Line::raw(""),
                 Line::raw("Press 'a' to add packages to your temporary shell."),
+                Line::raw("Press 'f' to also search the packages of other flakes."),
             ])
             .alignment(Alignment::Center),
             middle,
@@ -41,9 +48,13 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .enumerate()
         .map(|(i, pkg)| {
             let r = &pkg.reference;
+            let (name, origin) = match &r.source {
+                Source::Flake { name, url } => (format!("{}.{}", name, r.attr), url.as_str()),
+                _ => (r.attr.clone(), r.rev().unwrap_or("-------")),
+            };
             Row::new(vec![
                 Cell::from(mark_marker(any_marked, shell.marked.contains(&i))),
-                Cell::from(format!(" {}", r.attr))
+                Cell::from(format!(" {}", name))
                     .style(Style::default().add_modifier(Modifier::BOLD)),
                 Cell::from("│"),
                 Cell::from(format!(" {}", r.version.as_deref().unwrap_or("Unknown")))
@@ -51,8 +62,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
                 Cell::from("│"),
                 Cell::from(format!(" {}", pkg.description)).style(Style::default().fg(Color::Gray)),
                 Cell::from("│"),
-                Cell::from(format!(" {}", r.rev().unwrap_or("-------")))
-                    .style(Style::default().fg(Color::Cyan)),
+                Cell::from(format!(" {}", origin)).style(Style::default().fg(Color::Cyan)),
             ])
         })
         .collect();

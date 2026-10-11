@@ -13,7 +13,7 @@ use crate::features::{
     flake::{self, FlakeState},
     log::LogState,
     search::Search,
-    shell::ShellState,
+    shell::{ShellState, flakes::FlakeList},
     templates::{SaveTemplate, TemplatePicker},
 };
 use crate::pkgref::PackageRef;
@@ -73,6 +73,7 @@ pub enum Popup {
     AddInput(AddInput),
     Search(Search),
     Details(SearchResult),
+    ShellFlakes(FlakeList),
 }
 
 pub enum Exit {
