@@ -1,3 +1,4 @@
+use super::input::TextInput;
 use ratatui::{prelude::*, widgets::*};
 
 pub trait Selectable {
@@ -204,19 +205,18 @@ pub fn mark_marker(any_marked: bool, marked: bool) -> Span<'static> {
     }
 }
 
-pub fn text_field<'a>(value: &'a str, title: &'a str, focused: bool) -> Paragraph<'a> {
-    Paragraph::new(value).block(
-        Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(if focused {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            }),
-    )
+pub fn text_field(frame: &mut Frame, area: Rect, input: &TextInput, title: &str, focused: bool) {
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(if focused {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        });
+    input.render(frame, area, block, focused);
 }
 
 pub fn footer(text: &str) -> Paragraph<'_> {

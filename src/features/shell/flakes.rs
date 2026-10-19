@@ -1,6 +1,7 @@
 use super::flake_name;
 use crate::app::{App, Popup};
 use crate::flake::Input;
+use crate::ui::input::TextInput;
 use crate::ui::widgets::{Selectable, footer, highlight, placeholder, popup_frame, text_field};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
@@ -9,7 +10,7 @@ use ratatui::{prelude::*, widgets::*};
 #[derive(Default)]
 pub struct FlakeList {
     pub list: ListState,
-    pub input: Option<String>,
+    pub input: Option<TextInput>,
     pub error: Option<String>,
 }
 
@@ -26,12 +27,8 @@ pub fn on_key(app: &mut App, mut form: FlakeList, key: KeyEvent) -> Popup {
     let flakes = &mut app.shell.flakes;
     match (&mut form.input, key.code) {
         (Some(_), KeyCode::Esc) => form.input = None,
-        (Some(url), KeyCode::Char(c)) => url.push(c),
-        (Some(url), KeyCode::Backspace) => {
-            url.pop();
-        }
         (Some(url), KeyCode::Enter) => {
-            let url = url.trim();
+            let url = url.value().trim();
             if flakes.iter().any(|f| f.url == url) {
                 form.error = Some(format!("{} is already in the list", url));
                 form.input = None;
@@ -46,9 +43,11 @@ pub fn on_key(app: &mut App, mut form: FlakeList, key: KeyEvent) -> Popup {
                 form.input = None;
             }
         }
-        (Some(_), _) => {}
+        (Some(url), _) => {
+            url.handle(key);
+        }
         (None, KeyCode::Esc | KeyCode::Char('q' | 'f')) => return Popup::None,
-        (None, KeyCode::Char('a')) => form.input = Some(String::new()),
+        (None, KeyCode::Char('a')) => form.input = Some(TextInput::default()),
         (None, KeyCode::Char('d')) => {
             if let Some(i) = form.list.selected().filter(|i| *i < flakes.len()) {
                 flakes.remove(i);
@@ -121,7 +120,7 @@ pub fn render(frame: &mut Frame, form: &mut FlakeList, flakes: &[Input]) {
     }
 
     match (&form.input, &form.error) {
-        (Some(url), _) => frame.render_widget(text_field(url, " Flake URL ", true), input_area),
+        (Some(url), _) => text_field(frame, input_area, url, " Flake URL ", true),
         (None, Some(error)) => frame.render_widget(
             Paragraph::new(error.as_str()).style(Style::default().fg(Color::Red)),
             input_area,

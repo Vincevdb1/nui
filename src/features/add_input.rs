@@ -2,6 +2,7 @@ use crate::app::effect::FlakeEdit;
 use crate::app::{App, Effect, Popup};
 use crate::backend::github::Branch;
 use crate::flake::Input;
+use crate::ui::input::TextInput;
 use crate::ui::widgets::{Selectable, footer, placeholder, popup_frame, text_field};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
@@ -24,8 +25,8 @@ impl Field {
 }
 
 pub struct AddInput {
-    pub name: String,
-    pub url: String,
+    pub name: TextInput,
+    pub url: TextInput,
     pub field: Field,
     branches: Vec<Branch>,
     pub suggestions: Vec<Branch>,
@@ -38,7 +39,7 @@ pub struct AddInput {
 
 impl AddInput {
     fn filter(&mut self, inputs: &[Input]) {
-        let query = self.name.to_lowercase();
+        let query = self.name.value().to_lowercase();
         self.suggestions = self
             .branches
             .iter()
@@ -66,7 +67,7 @@ impl AddInput {
         }
     }
 
-    fn field_mut(&mut self) -> &mut String {
+    fn field_mut(&mut self) -> &mut TextInput {
         match self.field {
             Field::Suggestions | Field::Name => &mut self.name,
             Field::Url => &mut self.url,
@@ -77,7 +78,7 @@ impl AddInput {
 /// `prefill` is a name, url and package to add once the input exists.
 pub fn open(app: &mut App, prefill: Option<(String, String, String)>) -> Popup {
     let (name, url, package) = match prefill {
-        Some((name, url, package)) => (name, url, Some(package)),
+        Some((name, url, package)) => (name.into(), url.into(), Some(package)),
         None => Default::default(),
     };
     app.effects.push(Effect::FetchBranches);
@@ -108,16 +109,13 @@ pub fn on_key(app: &mut App, mut form: AddInput, key: KeyEvent) -> Popup {
         }
         KeyCode::Down => form.field = form.field.cycle(true),
         KeyCode::Up => form.field = form.field.cycle(false),
-        KeyCode::Char(c) => {
-            form.field_mut().push(c);
-            form.filter(&app.flake.inputs);
-        }
-        KeyCode::Backspace => {
-            form.field_mut().pop();
-            form.filter(&app.flake.inputs);
-        }
         KeyCode::Enter if submit(app, &form) => return Popup::None,
-        _ => {}
+        KeyCode::Enter => {}
+        _ => {
+            if form.field_mut().handle(key) {
+                form.filter(&app.flake.inputs);
+            }
+        }
     }
     Popup::AddInput(form)
 }
@@ -131,7 +129,10 @@ fn submit(app: &mut App, form: &AddInput) -> bool {
         .filter(|_| form.field == Field::Suggestions);
     let (name, url) = match suggestion {
         Some(branch) => (branch.name.clone(), branch.url.clone()),
-        None => (form.name.trim().to_string(), form.url.trim().to_string()),
+        None => (
+            form.name.value().trim().to_string(),
+            form.url.value().trim().to_string(),
+        ),
     };
     if name.is_empty() || url.is_empty() {
         return false;
@@ -226,14 +227,8 @@ pub fn render(frame: &mut Frame, form: &mut AddInput) {
     let [name, url] = Layout::vertical([Constraint::Length(3), Constraint::Length(3)])
         .margin(1)
         .areas(manual);
-    frame.render_widget(
-        text_field(&form.name, " Name ", form.field == Field::Name),
-        name,
-    );
-    frame.render_widget(
-        text_field(&form.url, " URL ", form.field == Field::Url),
-        url,
-    );
+    text_field(frame, name, &form.name, " Name ", form.field == Field::Name);
+    text_field(frame, url, &form.url, " URL ", form.field == Field::Url);
 
     frame.render_widget(
         footer(match form.field {

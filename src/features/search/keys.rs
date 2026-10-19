@@ -31,9 +31,6 @@ fn results_key(app: &mut App, mut s: Search, key: KeyEvent) -> Popup {
         KeyCode::Char('k') if ctrl => s.list.step(s.results.len(), false),
         KeyCode::Down => s.list.step(s.results.len(), true),
         KeyCode::Up => s.list.step(s.results.len(), false),
-        KeyCode::Backspace => s.edit(|q| {
-            q.pop();
-        }),
         KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
             // nxv only has history for nixpkgs, not for the shell's custom flakes.
             let custom_flake =
@@ -55,8 +52,7 @@ fn results_key(app: &mut App, mut s: Search, key: KeyEvent) -> Popup {
                 return close(app);
             }
         }
-        KeyCode::Char(c) => s.edit(|q| q.push(c)),
-        _ => {}
+        _ => s.edit(key),
     }
     Popup::Search(s)
 }

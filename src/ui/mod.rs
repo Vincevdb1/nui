@@ -1,3 +1,4 @@
+pub mod input;
 pub mod widgets;
 
 use crate::app::{App, Focus, Mode, Popup};

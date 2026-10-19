@@ -49,7 +49,8 @@ pub fn render(frame: &mut Frame, s: &mut Search, ctx: &Context) {
         query_block = query_block
             .title_top(Line::from(format!(" Sources: {} ", sources.join(", "))).right_aligned());
     }
-    frame.render_widget(Paragraph::new(s.query.as_str()).block(query_block), query);
+    s.query
+        .render(frame, query, query_block, matches!(s.stage, Stage::Results));
 
     let hint_text = match &s.stage {
         Stage::Versions(_) => "Enter: Select Version | Esc: Back to Search",

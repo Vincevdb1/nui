@@ -1,6 +1,7 @@
 use crate::app::{App, Effect, Mode, Popup};
 use crate::backend::templates::Template;
 use crate::pkgref::Source;
+use crate::ui::input::TextInput;
 use crate::ui::widgets::{Selectable, footer, popup_frame, ruled_header, text_field};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
@@ -63,8 +64,8 @@ pub fn confirm_key(app: &mut App, name: String, key: KeyEvent) -> Popup {
 
 #[derive(Default)]
 pub struct SaveTemplate {
-    pub filename: String,
-    pub description: String,
+    pub filename: TextInput,
+    pub description: TextInput,
     pub on_description: bool,
 }
 
@@ -73,22 +74,13 @@ pub fn open_save(app: &mut App) {
 }
 
 pub fn save_key(app: &mut App, mut form: SaveTemplate, key: KeyEvent) -> Popup {
-    let field = if form.on_description {
-        &mut form.description
-    } else {
-        &mut form.filename
-    };
     match key.code {
         KeyCode::Esc => return Popup::None,
         KeyCode::Tab | KeyCode::BackTab => form.on_description = !form.on_description,
-        KeyCode::Char(c) => field.push(c),
-        KeyCode::Backspace => {
-            field.pop();
-        }
-        KeyCode::Enter if !form.filename.trim().is_empty() => {
+        KeyCode::Enter if !form.filename.value().trim().is_empty() => {
             app.effects.push(Effect::SaveTemplate {
-                name: form.filename,
-                description: form.description,
+                name: form.filename.value().to_string(),
+                description: form.description.value().to_string(),
                 packages: app
                     .shell
                     .packages
@@ -100,7 +92,12 @@ pub fn save_key(app: &mut App, mut form: SaveTemplate, key: KeyEvent) -> Popup {
             });
             return Popup::None;
         }
-        _ => {}
+        _ if form.on_description => {
+            form.description.handle(key);
+        }
+        _ => {
+            form.filename.handle(key);
+        }
     }
     Popup::SaveTemplate(form)
 }
@@ -184,13 +181,19 @@ pub fn render_save(frame: &mut Frame, form: &SaveTemplate) {
     .margin(2)
     .areas(area);
 
-    frame.render_widget(
-        text_field(&form.filename, " Filename ", !form.on_description),
+    text_field(
+        frame,
         filename,
+        &form.filename,
+        " Filename ",
+        !form.on_description,
     );
-    frame.render_widget(
-        text_field(&form.description, " Description ", form.on_description),
+    text_field(
+        frame,
         description,
+        &form.description,
+        " Description ",
+        form.on_description,
     );
     frame.render_widget(
         Paragraph::new("Packages to include: default devShell with current shell packages.")

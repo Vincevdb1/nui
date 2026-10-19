@@ -75,7 +75,7 @@ fn typing_edits_the_query() {
     let mut app = open(shell_app());
     type_text(&mut app, "ripx");
     press(&mut app, key(KeyCode::Backspace));
-    assert_eq!(search(&app).query, "rip");
+    assert_eq!(search(&app).query.value(), "rip");
 }
 
 #[test]
@@ -194,7 +194,7 @@ fn ctrl_j_and_arrows_move_the_selection() {
     assert_eq!(search(&app).list.selected(), Some(0));
     press(&mut app, key(KeyCode::Up));
     assert_eq!(search(&app).list.selected(), Some(1));
-    assert_eq!(search(&app).query, "", "ctrl+j is not typed");
+    assert_eq!(search(&app).query.value(), "", "ctrl+j is not typed");
 }
 
 #[test]
@@ -441,8 +441,8 @@ fn picking_a_historical_version_in_flake_mode_offers_a_new_input() {
     press(&mut app, key(KeyCode::Enter));
     match &app.popup {
         Popup::AddInput(form) => {
-            assert_eq!(form.name, "nixpkgs-0011223");
-            assert_eq!(form.url, "github:NixOS/nixpkgs/0011223344556677");
+            assert_eq!(form.name.value(), "nixpkgs-0011223");
+            assert_eq!(form.url.value(), "github:NixOS/nixpkgs/0011223344556677");
         }
         _ => panic!("expected the add-input form"),
     }

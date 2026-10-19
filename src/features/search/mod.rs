@@ -8,6 +8,8 @@ use crate::app::{App, Effect, Generation, Mode, Popup};
 use crate::backend::nxv::VersionInfo;
 use crate::backend::search::{self, ChannelVersion, SearchResult};
 use crate::flake::Input;
+use crate::ui::input::TextInput;
+use ratatui::crossterm::event::KeyEvent;
 use ratatui::widgets::ListState;
 use std::time::{Duration, Instant};
 use versions::VersionPicker;
@@ -21,7 +23,7 @@ pub enum Stage {
 }
 
 pub struct Search {
-    pub query: String,
+    pub query: TextInput,
     searched: String,
     edited: Instant,
     pub results: Vec<SearchResult>,
@@ -35,7 +37,7 @@ pub struct Search {
 impl Search {
     fn new(stage: Stage) -> Self {
         Self {
-            query: String::new(),
+            query: TextInput::default(),
             searched: String::new(),
             edited: Instant::now(),
             results: Vec::new(),
@@ -47,9 +49,10 @@ impl Search {
         }
     }
 
-    pub fn edit(&mut self, f: impl FnOnce(&mut String)) {
-        f(&mut self.query);
-        self.edited = Instant::now();
+    pub fn edit(&mut self, key: KeyEvent) {
+        if self.query.handle(key) {
+            self.edited = Instant::now();
+        }
     }
 
     pub fn selected(&self) -> Option<&SearchResult> {
@@ -102,10 +105,10 @@ pub fn tick(app: &mut App) {
     let Popup::Search(s) = &mut app.popup else {
         return;
     };
-    if s.edited.elapsed() <= DEBOUNCE || s.query == s.searched {
+    if s.edited.elapsed() <= DEBOUNCE || s.query.value() == s.searched {
         return;
     }
-    if s.query.is_empty() {
+    if s.query.value().is_empty() {
         s.searched.clear();
         s.results.clear();
         s.list.select(None);
@@ -117,7 +120,7 @@ pub fn tick(app: &mut App) {
         return;
     }
 
-    s.searched = s.query.clone();
+    s.searched = s.query.value().to_string();
     s.searching = true;
     s.error = None;
     let system_version = app
@@ -129,7 +132,12 @@ pub fn tick(app: &mut App) {
     } else {
         &app.flake.inputs
     };
-    let request = search::Request::new(s.query.clone(), shell_mode, inputs, system_version);
+    let request = search::Request::new(
+        s.query.value().to_string(),
+        shell_mode,
+        inputs,
+        system_version,
+    );
     s.channels = request.channels();
     app.effects.push(Effect::Search {
         generation: app.search_generation.bump(),
