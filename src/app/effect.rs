@@ -118,7 +118,11 @@ impl Executor {
     pub fn run(&self, effect: Effect) {
         match effect {
             Effect::ProbeSystem => self.spawn(|tx| {
-                let _ = tx.send(Action::SystemProbed(SystemInfo::probe(), Tools::probe()));
+                let (system, tools) = std::thread::scope(|scope| {
+                    let tools = scope.spawn(Tools::probe);
+                    (SystemInfo::probe(), tools.join().unwrap_or_default())
+                });
+                let _ = tx.send(Action::SystemProbed(system, tools));
             }),
             Effect::LoadFlake(path) => self.spawn(move |tx| {
                 let source = std::fs::read_to_string(&path).unwrap_or_default();

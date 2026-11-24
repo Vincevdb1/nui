@@ -21,38 +21,41 @@ fn trimmed_stdout(cmd: &mut Command) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
+/// One eval for both values; `lib` alone avoids instantiating all of nixpkgs.
+const PROBE_EXPR: &str = "{ version = (import <nixpkgs/lib>).version; path = toString <nixpkgs>; }";
+
+#[derive(serde::Deserialize)]
+struct Probe {
+    version: String,
+    path: String,
+}
+
 impl SystemInfo {
     pub fn probe() -> Self {
-        let nixpkgs_version = process::output(Command::new("nix-instantiate").args([
-            "--eval",
-            "-E",
-            "(import <nixpkgs> {}).lib.version",
-            "--json",
-        ]))
+        let probe = process::output(
+            Command::new("nix").args(["eval", "--json", "--impure", "--expr", PROBE_EXPR]),
+        )
         .ok()
         .filter(|o| o.status.success())
-        .and_then(|o| serde_json::from_slice::<String>(&o.stdout).ok());
+        .map(|o| o.stdout)
+        .unwrap_or_default();
+        let nixos_rev = trimmed_stdout(Command::new("nixos-version").arg("--revision"));
+        Self::from_probe(&probe, nixos_rev)
+    }
 
-        let nixpkgs_path = trimmed_stdout(Command::new("nix").args([
-            "eval",
-            "--raw",
-            "--impure",
-            "--expr",
-            "toString <nixpkgs>",
-        ]));
-
-        let nixpkgs_rev = trimmed_stdout(Command::new("nixos-version").arg("--revision"))
-            .filter(|rev| rev.len() >= 7)
-            .or_else(|| {
-                trimmed_stdout(Command::new("nix").args([
-                    "eval",
-                    "--raw",
-                    "--impure",
-                    "--expr",
-                    "builtins.substring 0 32 (builtins.baseNameOf (toString <nixpkgs>))",
-                ]))
-            });
-
+    /// Builds the info from the probe eval's JSON and `nixos-version --revision`; without a
+    /// NixOS revision, the rev is read from the store path's name.
+    pub fn from_probe(json: &[u8], nixos_rev: Option<String>) -> Self {
+        let probe: Option<Probe> = serde_json::from_slice(json).ok();
+        let (nixpkgs_version, nixpkgs_path) = match probe {
+            Some(p) => (Some(p.version), Some(p.path).filter(|p| !p.is_empty())),
+            None => (None, None),
+        };
+        let nixpkgs_rev = nixos_rev.filter(|rev| rev.len() >= 7).or_else(|| {
+            let name = std::path::Path::new(nixpkgs_path.as_deref()?).file_name()?;
+            let rev: String = name.to_string_lossy().chars().take(32).collect();
+            (!rev.is_empty()).then_some(rev)
+        });
         Self {
             nixpkgs_version,
             nixpkgs_path,

@@ -89,3 +89,35 @@ fn fetches_nixpkgs_branches_from_github() {
     );
     assert!(branches.iter().any(|b| b.name.starts_with("nixos-")));
 }
+
+#[test]
+fn the_probe_reads_version_path_and_rev() {
+    let json = br#"{"version":"25.11pre-git","path":"/nix/store/abc123-source"}"#;
+    let info = system::SystemInfo::from_probe(json, Some("0123456789abcdef".into()));
+    assert_eq!(info.nixpkgs_version.as_deref(), Some("25.11pre-git"));
+    assert_eq!(
+        info.nixpkgs_path.as_deref(),
+        Some("/nix/store/abc123-source")
+    );
+    assert_eq!(info.nixpkgs_rev.as_deref(), Some("0123456789abcdef"));
+}
+
+#[test]
+fn without_a_nixos_rev_the_rev_comes_from_the_store_path() {
+    let path = format!("/nix/store/{}-source", "x".repeat(32));
+    let json = format!(r#"{{"version":"25.11","path":"{}"}}"#, path);
+    let info = system::SystemInfo::from_probe(json.as_bytes(), Some("short".into()));
+    assert_eq!(
+        info.nixpkgs_rev,
+        Some("x".repeat(32)),
+        "a short NixOS rev is ignored"
+    );
+}
+
+#[test]
+fn a_failed_probe_leaves_everything_unknown() {
+    let info = system::SystemInfo::from_probe(b"", None);
+    assert!(info.nixpkgs_version.is_none());
+    assert!(info.nixpkgs_path.is_none());
+    assert!(info.nixpkgs_rev.is_none());
+}
