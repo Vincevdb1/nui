@@ -303,3 +303,35 @@ pub fn parse_metadata(json: &[u8]) -> Option<Metadata> {
             .to_string(),
     })
 }
+
+pub fn update_command(flake_ref: &str, inputs: &[String]) -> Command {
+    let mut cmd = Command::new("nix");
+    cmd.args(["flake", "update"])
+        .args(inputs)
+        .args(["--flake", flake_ref]);
+    cmd
+}
+
+pub fn update_inputs(flake_ref: &str, inputs: &[String]) -> Result<()> {
+    let mut cmd = update_command(flake_ref, inputs);
+    let line = std::iter::once(cmd.get_program())
+        .chain(cmd.get_args())
+        .map(|a| a.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    crate::log::action("Updating flake inputs", line);
+    let output = process::output(&mut cmd).map_err(|e| Error::Spawn("nix", e))?;
+    if !output.status.success() {
+        return Err(Error::Message(format!(
+            "nix flake update failed:\n{}",
+            stderr_tail(&output.stderr, 20)
+        )));
+    }
+    Ok(())
+}
+
+pub fn stderr_tail(stderr: &[u8], lines: usize) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    let all: Vec<&str> = text.trim().lines().collect();
+    all[all.len().saturating_sub(lines)..].join("\n")
+}

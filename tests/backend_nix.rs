@@ -165,3 +165,48 @@ fn versions_at_rejects_revisions_that_are_not_plain_hashes() {
     let attrs = ["hello".to_string()];
     assert!(nix::versions_at("abc\"; evil", &attrs, None).is_empty());
 }
+
+#[test]
+fn update_command_names_the_inputs_and_the_flake() {
+    let cmd = nix::update_command("./sub", &["nixpkgs".into(), "home-manager".into()]);
+    let args: Vec<_> = cmd
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(cmd.get_program(), "nix");
+    assert_eq!(
+        args,
+        [
+            "flake",
+            "update",
+            "nixpkgs",
+            "home-manager",
+            "--flake",
+            "./sub"
+        ]
+    );
+}
+
+#[test]
+fn update_command_without_inputs_updates_all() {
+    let cmd = nix::update_command(".", &[]);
+    let args: Vec<_> = cmd
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(args, ["flake", "update", "--flake", "."]);
+}
+
+#[test]
+fn stderr_tail_keeps_the_last_lines() {
+    assert_eq!(nix::stderr_tail(b"one\ntwo\nthree\n", 2), "two\nthree");
+}
+
+#[test]
+#[ignore] // needs nix and network
+fn update_inputs_locks_a_copied_flake() {
+    let dir = common::copy_flake("devshells");
+    let flake_ref = dir.path().to_string_lossy().into_owned();
+    nix::update_inputs(&flake_ref, &["nixpkgs-stable".into()]).unwrap();
+    assert!(dir.path().join("flake.lock").exists());
+}
