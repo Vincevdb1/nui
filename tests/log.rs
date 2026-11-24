@@ -79,3 +79,20 @@ fn the_installed_sink_receives_every_kind_of_entry() {
         ["action Build: nix build", "output Out: done", "info hello"]
     );
 }
+
+#[test]
+fn the_oldest_entries_are_dropped_past_the_cap() {
+    use nui::features::log::MAX_ENTRIES;
+    let mut log = LogState::default();
+    log.push(output("a\nb\nc"));
+    for i in 0..MAX_ENTRIES {
+        log.push(LogEntry::Info(i.to_string()));
+    }
+    assert_eq!(log.entries.len(), MAX_ENTRIES);
+    assert!(matches!(log.entries.front(), Some(LogEntry::Info(m)) if m == "0"));
+    assert_eq!(
+        log.list.selected(),
+        Some(MAX_ENTRIES * 3 - 1),
+        "the dropped entry's lines no longer count"
+    );
+}

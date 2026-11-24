@@ -1,21 +1,32 @@
 use crate::log::LogEntry;
 use crate::ui::widgets::{Selectable, panel};
 use ratatui::{prelude::*, widgets::*};
+use std::collections::VecDeque;
+
+/// Oldest entries are dropped past this, so the log can't grow without bound.
+pub const MAX_ENTRIES: usize = 1000;
 
 #[derive(Default)]
 pub struct LogState {
-    pub entries: Vec<LogEntry>,
+    pub entries: VecDeque<LogEntry>,
     pub list: ListState,
+    lines: usize,
 }
 
 impl LogState {
     fn line_count(&self) -> usize {
-        self.entries.iter().map(LogEntry::height).sum()
+        self.lines
     }
 
     /// Appends an entry and follows the tail.
     pub fn push(&mut self, entry: LogEntry) {
-        self.entries.push(entry);
+        self.lines += entry.height();
+        self.entries.push_back(entry);
+        if self.entries.len() > MAX_ENTRIES
+            && let Some(old) = self.entries.pop_front()
+        {
+            self.lines -= old.height();
+        }
         self.list.select(self.line_count().checked_sub(1));
     }
 
