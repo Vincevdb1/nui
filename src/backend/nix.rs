@@ -3,7 +3,7 @@ use super::search::SearchPackage;
 use super::{Error, Result};
 use crate::flake::edit;
 use crate::flake::locate::{Fs, Sources};
-use crate::flake::{Output, OutputKind, Package, files, parse};
+use crate::flake::{Output, OutputKind, Package, ShellTarget, files, parse};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -314,12 +314,7 @@ pub fn update_command(flake_ref: &str, inputs: &[String]) -> Command {
 
 pub fn update_inputs(flake_ref: &str, inputs: &[String]) -> Result<()> {
     let mut cmd = update_command(flake_ref, inputs);
-    let line = std::iter::once(cmd.get_program())
-        .chain(cmd.get_args())
-        .map(|a| a.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join(" ");
-    crate::log::action("Updating flake inputs", line);
+    crate::log::action("Updating flake inputs", command_line(&cmd));
     let output = process::output(&mut cmd).map_err(|e| Error::Spawn("nix", e))?;
     if !output.status.success() {
         return Err(Error::Message(format!(
@@ -328,6 +323,54 @@ pub fn update_inputs(flake_ref: &str, inputs: &[String]) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+fn command_line(cmd: &Command) -> String {
+    std::iter::once(cmd.get_program())
+        .chain(cmd.get_args())
+        .map(|a| a.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[derive(Debug)]
+pub enum CheckError {
+    Failed(String),
+    NotRun(String),
+}
+
+/// Forces each shell's drvPath, which evaluates it without building it.
+pub fn check_command(flake_ref: &str, shells: &[ShellTarget]) -> Command {
+    let items: Vec<String> = shells
+        .iter()
+        .map(|t| format!(r#"s."{}"."{}".drvPath"#, t.system, t.name))
+        .collect();
+    let mut cmd = Command::new("nix");
+    cmd.args(["eval", "--json", "--impure", "--no-write-lock-file"])
+        .arg(format!("{}#devShells", flake_ref))
+        .args(["--apply", &format!("s: [ {} ]", items.join(" "))]);
+    cmd
+}
+
+pub fn run_check(mut cmd: Command) -> std::result::Result<(), CheckError> {
+    let output = process::output(&mut cmd).map_err(|e| CheckError::NotRun(e.to_string()))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(CheckError::Failed(stderr_tail(&output.stderr, 20)))
+    }
+}
+
+pub fn check_shells(
+    flake_ref: &str,
+    shells: &[ShellTarget],
+) -> std::result::Result<(), CheckError> {
+    if shells.is_empty() {
+        return Ok(());
+    }
+    let cmd = check_command(flake_ref, shells);
+    crate::log::action("Checking edit", command_line(&cmd));
+    run_check(cmd)
 }
 
 pub fn stderr_tail(stderr: &[u8], lines: usize) -> String {

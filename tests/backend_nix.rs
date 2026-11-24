@@ -2,7 +2,9 @@ mod common;
 
 use common::{fixture, flake_path};
 use nui::backend::nix;
+use nui::backend::nix::CheckError;
 use nui::flake::{Output, OutputKind};
+use std::process::Command;
 
 fn output(kind: OutputKind, path: &str) -> Output {
     Output {
@@ -209,4 +211,52 @@ fn update_inputs_locks_a_copied_flake() {
     let flake_ref = dir.path().to_string_lossy().into_owned();
     nix::update_inputs(&flake_ref, &["nixpkgs-stable".into()]).unwrap();
     assert!(dir.path().join("flake.lock").exists());
+}
+
+#[test]
+fn check_command_forces_each_shell_drv_path() {
+    let cmd = nix::check_command(
+        ".",
+        &[
+            common::x86("default"),
+            common::target("aarch64-darwin", "ci"),
+        ],
+    );
+    let args: Vec<_> = cmd
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        args,
+        [
+            "eval",
+            "--json",
+            "--impure",
+            "--no-write-lock-file",
+            ".#devShells",
+            "--apply",
+            r#"s: [ s."x86_64-linux"."default".drvPath s."aarch64-darwin"."ci".drvPath ]"#,
+        ]
+    );
+}
+
+#[test]
+fn a_failed_check_keeps_the_end_of_stderr() {
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", "echo 'error: undefined variable foo' >&2; exit 1"]);
+    match nix::run_check(cmd) {
+        Err(CheckError::Failed(e)) => assert_eq!(e, "error: undefined variable foo"),
+        other => panic!("unexpected: {other:?}"),
+    }
+}
+
+#[test]
+fn a_check_that_cannot_start_is_not_run() {
+    let cmd = Command::new("nui-test-no-such-binary");
+    assert!(matches!(nix::run_check(cmd), Err(CheckError::NotRun(_))));
+}
+
+#[test]
+fn no_shells_means_no_check() {
+    assert!(nix::check_shells(".", &[]).is_ok());
 }
