@@ -176,7 +176,7 @@ pub fn run(
 
     match &request.scope {
         Scope::Shell { flakes, .. } => {
-            let jobs = request
+            let channel_jobs: Vec<Job> = request
                 .channels()
                 .into_iter()
                 .map(|target| {
@@ -189,11 +189,7 @@ pub fn run(
                     }
                 })
                 .collect();
-            collect(jobs, &mut |source, pkg, results| {
-                merge_shell(results, source, pkg)
-            });
-
-            let jobs = flakes
+            let flake_jobs: Vec<Job> = flakes
                 .iter()
                 .map(|flake| {
                     let (q, r, url) = (query.clone(), reg.clone(), flake.url.clone());
@@ -202,7 +198,10 @@ pub fn run(
                     })
                 })
                 .collect();
-            collect(jobs, &mut |source, mut pkg, results| {
+            collect(channel_jobs, &mut |source, pkg, results| {
+                merge_shell(results, source, pkg)
+            });
+            collect(flake_jobs, &mut |source, mut pkg, results| {
                 pkg.attribute = flake_attr(&pkg.attribute).to_string();
                 merge_flake(results, source, true, pkg)
             });
