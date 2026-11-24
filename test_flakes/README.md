@@ -14,5 +14,11 @@ them with `nix` and need network access: `cargo test -- --ignored`.
 | `pinned/` | A package pinned to its own nixpkgs input, an `inputs@{ ... }` outputs pattern |
 | `minimal/` | No `inputs` block and a single-line `{ self }:` pattern; not evaluable on purpose (no lock, no nixpkgs) |
 | `mixed/` | devShells, a NixOS configuration and `packages` in one flake |
+| `flake-utils/` | flake-utils `eachDefaultSystem (system: ...)` with `devShells.default`; text only |
+| `for-all-systems/` | `devShells = forAllSystems (pkgs: ...)` with the shell bound in `let`; text only |
+| `flake-parts/` | flake-parts `perSystem = { pkgs, ... }:` and an `args@{ ... }` outputs pattern; text only |
+| `imported/` | `devShells.${system}.default = import ./shell.nix { inherit pkgs; }`; text only |
+| `concat/` | `packages = with pkgs; [ ... ] ++ lib.optionals ...`; text only |
+| `unknown/` | A shell made by a helper that nui cannot follow, for the managed file fallback; text only |
 
 Captured tool output (`nix flake show`, `nix-search`, `nxv`, ...) lives in `tests/fixtures/`.

@@ -108,3 +108,17 @@ pub fn flake_app(name: &str) -> App {
     app.flake.outputs = parse::outputs(&src);
     app
 }
+
+/// Every `.nix` file of a fixture flake, keyed by its path relative to the flake.
+pub fn sources(name: &str) -> std::collections::HashMap<PathBuf, String> {
+    let dir = root().join("test_flakes").join(name);
+    walkdir::WalkDir::new(&dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "nix"))
+        .map(|e| {
+            let rel = e.path().strip_prefix(&dir).unwrap().to_path_buf();
+            (rel, std::fs::read_to_string(e.path()).unwrap())
+        })
+        .collect()
+}

@@ -1,5 +1,6 @@
 pub mod edit;
 pub mod files;
+pub mod locate;
 pub mod model;
 pub mod parse;
 
