@@ -60,6 +60,9 @@ pub fn pin_package(
         (!edits.is_empty()).then_some(edits)
     });
     for (file, edited) in replaced.ok_or_else(|| EditError::PackageNotFound(pkg.to_string()))? {
+        if !shell.inputs_in_scope(&files, flake, &file, &bind) {
+            return Err(EditError::InputsNotInScope(file));
+        }
         files.set(&file, edited);
     }
 

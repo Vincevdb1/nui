@@ -106,10 +106,9 @@ fn flake_show_matches_the_captured_fixture() {
     let live = nix::flake_show(&flake_path("mixed")).unwrap();
     let json: serde_json::Value = serde_json::from_str(&fixture("flake_show_v2.json")).unwrap();
     let source = common::flake_src("mixed");
-    assert_eq!(
-        live,
-        nui::flake::parse::outputs_from_flake_show(&json, &source)
-    );
+    let mut expected = nui::flake::parse::outputs_from_flake_show(&json, &source);
+    nix::attach_shell_sources(&nui::flake::locate::Fs, &flake_path("mixed"), &mut expected);
+    assert_eq!(live, expected);
 }
 
 #[test]

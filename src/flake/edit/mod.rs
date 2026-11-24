@@ -34,6 +34,8 @@ pub enum EditError {
     NotPinned(String),
     #[error("invalid pinned package reference: {0}")]
     InvalidPinnedRef(String),
+    #[error("inputs is not in scope in {0}, so a pinned package cannot refer to it there")]
+    InputsNotInScope(PathBuf),
     #[error("could not read {0}")]
     Unreadable(PathBuf),
     #[error(transparent)]
@@ -166,6 +168,31 @@ impl ShellLists {
             .map(|l| l.file.clone())
             .chain(self.managed.clone())
             .collect()
+    }
+
+    /// Whether a pinned ref through `bind` resolves in `file`. flake.nix gets the bind when
+    /// nui pins; the managed file takes `inputs` when its import passes it.
+    fn inputs_in_scope(&self, files: &Overlay, flake: &Path, file: &Path, bind: &str) -> bool {
+        if file == flake {
+            return true;
+        }
+        if self.managed.as_deref() == Some(file) {
+            return match &self.set {
+                None => true,
+                Some(location) => {
+                    location.file == flake
+                        || files
+                            .read(&location.file)
+                            .and_then(|src| shell_node(&src, location))
+                            .is_some_and(|set| set.to_string().contains("inputs"))
+                }
+            };
+        }
+        self.set
+            .as_ref()
+            .filter(|l| l.file == file)
+            .and_then(|l| shell_node(&files.read(file)?, l))
+            .is_some_and(|set| crate::flake::locate::in_scope(&set, bind))
     }
 
     fn lists(&self, path: &Path, src: &str) -> Vec<SyntaxNode> {

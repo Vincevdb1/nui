@@ -323,7 +323,7 @@ fn resolve_ident(ident: &SyntaxNode) -> Option<SyntaxNode> {
     None
 }
 
-fn lambda_binds(lambda: &SyntaxNode, name: &str) -> bool {
+pub(crate) fn lambda_binds(lambda: &SyntaxNode, name: &str) -> bool {
     let Some(param) = lambda.children().next() else {
         return false;
     };
@@ -338,6 +338,18 @@ fn lambda_binds(lambda: &SyntaxNode, name: &str) -> bool {
                         | SyntaxKind::NODE_PAT_BIND
                 )
             })
+    })
+}
+
+/// Whether an enclosing lambda or `let` binds `name` at `node`.
+pub(crate) fn in_scope(node: &SyntaxNode, name: &str) -> bool {
+    node.ancestors().any(|a| match a.kind() {
+        SyntaxKind::NODE_LAMBDA => lambda_binds(&a, name),
+        SyntaxKind::NODE_LET_IN => a
+            .children()
+            .filter(|c| c.kind() == SyntaxKind::NODE_ATTRPATH_VALUE)
+            .any(|b| binding_path(&b).as_deref() == Some(name)),
+        _ => false,
     })
 }
 

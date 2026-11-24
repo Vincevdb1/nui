@@ -306,3 +306,35 @@ fn a_new_pinned_ref_is_pinned() {
     };
     assert!(package.is_pinned());
 }
+
+#[test]
+fn pinning_refuses_a_file_where_inputs_is_not_in_scope() {
+    let files = common::sources("imported");
+    let err = nui::flake::edit::pin_package(
+        &files,
+        std::path::Path::new("flake.nix"),
+        &x86("default"),
+        "pkgs.git",
+        &nixpkgs_input(),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&err, EditError::InputsNotInScope(file) if file == std::path::Path::new("shell.nix")),
+        "{err:?}"
+    );
+
+    // A file that takes `inputs` can hold the pinned ref.
+    let mut files = files;
+    let shell = files[std::path::Path::new("shell.nix")].replace("{ pkgs }:", "{ pkgs, inputs }:");
+    files.insert("shell.nix".into(), shell);
+    assert!(
+        nui::flake::edit::pin_package(
+            &files,
+            std::path::Path::new("flake.nix"),
+            &x86("default"),
+            "pkgs.git",
+            &nixpkgs_input(),
+        )
+        .is_ok()
+    );
+}
