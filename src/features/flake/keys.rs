@@ -78,20 +78,15 @@ fn remove_packages(app: &mut App) {
     }
     if let Some((file, target)) = flake.editable_target() {
         flake.marked.clear();
-        app.effects.push(Effect::Edit {
-            flake: file,
-            edit: FlakeEdit::RemovePackages { target, packages },
-        });
+        super::edit(app, file, FlakeEdit::RemovePackages { target, packages });
     }
 }
 
 fn remove_input(app: &mut App) {
     let flake = &app.flake;
     if let (Some(file), Some(input)) = (flake.selected_file(), flake.selected_input()) {
-        app.effects.push(Effect::Edit {
-            flake: file.clone(),
-            edit: FlakeEdit::RemoveInput(input.name.clone()),
-        });
+        let edit = FlakeEdit::RemoveInput(input.name.clone());
+        super::edit(app, file.clone(), edit);
     }
 }
 
@@ -146,7 +141,7 @@ fn toggle_pin(app: &mut App) {
             inputs: flake.inputs.clone(),
         }
     };
-    app.effects.push(Effect::Edit { flake: file, edit });
+    super::edit(app, file, edit);
 }
 
 fn show_details(app: &mut App) {

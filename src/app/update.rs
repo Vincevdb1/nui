@@ -19,6 +19,11 @@ pub fn update(app: &mut App, action: Action) {
         }
         Action::FlakeLoaded(inputs, outputs) => flake::loaded(app, inputs, outputs),
         Action::FlakeChanged => flake::reload(app),
+        Action::EditApplied(snapshot) => app.flake.last_edit = Some(snapshot),
+        Action::CheckFailed { snapshot, error } => {
+            crate::log::output("Error", format!("The edit failed its check:\n{}", error));
+            app.flake.last_edit = Some(snapshot);
+        }
         Action::InputsUpdated(result) => flake::inputs_updated(app, result),
         Action::PackagesLoaded(generation, result) => {
             flake::packages_loaded(app, generation, result)

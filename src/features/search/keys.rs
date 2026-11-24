@@ -112,10 +112,7 @@ fn add_from_flake(app: &mut App, result: &SearchResult) {
 
 fn add_to_flake(app: &mut App, package: String) {
     if let Some((flake, target)) = app.flake.edit_target() {
-        app.effects.push(Effect::Edit {
-            flake,
-            edit: FlakeEdit::AddPackage { target, package },
-        });
+        crate::features::flake::edit(app, flake, FlakeEdit::AddPackage { target, package });
     }
 }
 

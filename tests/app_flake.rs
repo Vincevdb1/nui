@@ -195,6 +195,7 @@ fn d_removes_the_selected_package() {
             Effect::Edit {
                 flake,
                 edit: FlakeEdit::RemovePackages { target, packages },
+                ..
             },
         ] => {
             assert_eq!(flake, &common::flake_path("pinned"));
@@ -394,4 +395,58 @@ fn a_failed_update_does_not_reload() {
     update(&mut app, Action::InputsUpdated(Err("offline".into())));
     assert!(!app.flake.updating);
     assert!(app.effects.is_empty());
+}
+
+fn shell(path: &str) -> nui::flake::Output {
+    nui::flake::Output {
+        kind: nui::flake::OutputKind::DevShell,
+        path: path.into(),
+        name: None,
+        content: None,
+        edit_error: None,
+    }
+}
+
+#[test]
+fn a_package_edit_checks_only_its_shell() {
+    let edit = FlakeEdit::AddPackage {
+        target: x86("default"),
+        package: "jq".into(),
+    };
+    let outputs = [shell("x86_64-linux.default"), shell("x86_64-linux.other")];
+    assert_eq!(flake::check_targets(&edit, &outputs), [x86("default")]);
+}
+
+#[test]
+fn an_input_edit_checks_every_shell() {
+    let edit = FlakeEdit::RemoveInput("nixpkgs-stable".into());
+    let mut nixos = shell("desktop");
+    nixos.kind = nui::flake::OutputKind::Nixos;
+    let outputs = [
+        shell("x86_64-linux.default"),
+        nixos,
+        shell("x86_64-linux.other"),
+    ];
+    assert_eq!(
+        flake::check_targets(&edit, &outputs),
+        [x86("default"), x86("other")]
+    );
+}
+
+#[test]
+fn removing_a_package_sends_its_shell_as_the_check() {
+    let mut app = loaded("devshells", 0, vec![package("git", "2.50")]);
+    let expected = app.flake.outputs[0].shell_target().unwrap();
+    press(&mut app, char('d'));
+    match app.effects.as_slice() {
+        [Effect::Edit { check, .. }] => assert_eq!(check, &[expected]),
+        _ => panic!("expected an Edit effect"),
+    }
+}
+
+#[test]
+fn an_applied_edit_can_be_undone() {
+    let mut app = flake_app("devshells");
+    update(&mut app, Action::EditApplied(Default::default()));
+    assert!(app.flake.last_edit.is_some());
 }

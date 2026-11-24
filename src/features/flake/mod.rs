@@ -1,7 +1,9 @@
 pub mod keys;
 pub mod view;
 
+use crate::app::effect::FlakeEdit;
 use crate::app::{App, Effect, Generation};
+use crate::flake::edit::Snapshot;
 use crate::flake::lock::{self, RevChange};
 use crate::flake::{Input, Output, Package, ShellTarget, files, parse};
 use ratatui::widgets::TableState;
@@ -25,6 +27,8 @@ pub struct FlakeState {
     /// Two `nix flake update` runs on one flake.lock can conflict, so only one runs.
     pub updating: bool,
     pub error: Option<String>,
+    /// What `z` restores; one level only.
+    pub last_edit: Option<Snapshot>,
     generation: Generation,
 }
 
@@ -83,6 +87,24 @@ pub fn load(app: &mut App) {
     );
     app.flake.file = 0;
     reload(app);
+}
+
+/// The devShells an edit can break: its own shell, or every shell for an input edit.
+pub fn check_targets(edit: &FlakeEdit, outputs: &[Output]) -> Vec<ShellTarget> {
+    match edit {
+        FlakeEdit::AddPackage { target, .. }
+        | FlakeEdit::RemovePackages { target, .. }
+        | FlakeEdit::Pin { target, .. }
+        | FlakeEdit::Unpin { target, .. } => vec![target.clone()],
+        FlakeEdit::AddInput { .. } | FlakeEdit::RemoveInput(_) => {
+            outputs.iter().filter_map(Output::shell_target).collect()
+        }
+    }
+}
+
+pub fn edit(app: &mut App, flake: PathBuf, edit: FlakeEdit) {
+    let check = check_targets(&edit, &app.flake.outputs);
+    app.effects.push(Effect::Edit { flake, edit, check });
 }
 
 pub fn reload(app: &mut App) {

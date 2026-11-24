@@ -147,10 +147,7 @@ fn submit(app: &mut App, form: &AddInput) -> bool {
             .map(|(_, target)| (target, pkg.clone())),
         None => None,
     };
-    app.effects.push(Effect::Edit {
-        flake: file,
-        edit: FlakeEdit::AddInput { name, url, package },
-    });
+    crate::features::flake::edit(app, file, FlakeEdit::AddInput { name, url, package });
     true
 }
 

@@ -38,7 +38,11 @@ fn restore_refuses_a_file_changed_after_the_edit() {
     .unwrap();
     std::fs::write(&b, "{ y = 2; }").unwrap();
     assert!(matches!(snapshot.restore(), Err(EditError::ChangedOnDisk(p)) if p == b));
-    assert_eq!(std::fs::read_to_string(&a).unwrap(), "{ x = 1; }", "nothing is restored");
+    assert_eq!(
+        std::fs::read_to_string(&a).unwrap(),
+        "{ x = 1; }",
+        "nothing is restored"
+    );
 }
 
 #[test]

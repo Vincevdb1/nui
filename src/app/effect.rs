@@ -3,7 +3,7 @@ use crate::backend::process::{ChildRegistry, cancel_registered};
 use crate::backend::search::{self, SearchResult};
 use crate::backend::system::{SystemInfo, Tools};
 use crate::backend::{github, nix, nxv, templates};
-use crate::flake::edit::{self, Changes, EditError};
+use crate::flake::edit::{self, Changes, EditError, Snapshot};
 use crate::flake::locate::Fs;
 use crate::flake::{Input, Output, ShellTarget, files, lock, parse};
 use crate::pkgref::PackageRef;
@@ -35,10 +35,13 @@ pub enum Effect {
         packages: Vec<(String, Option<String>)>,
         inputs: Vec<Input>,
     },
+    /// `check` names the devShells to evaluate after the write.
     Edit {
         flake: PathBuf,
         edit: FlakeEdit,
+        check: Vec<ShellTarget>,
     },
+    Restore(Snapshot),
     /// An empty `inputs` updates all inputs.
     UpdateInputs {
         flake: PathBuf,
@@ -188,10 +191,36 @@ impl Executor {
                     });
                 }
             }
-            Effect::Edit { flake, edit } => self.spawn(move |tx| {
-                if apply_edit(tx, &flake, edit) {
+            Effect::Edit { flake, edit, check } => self.spawn(move |tx| {
+                if let Some(snapshot) = apply_edit(tx, &flake, edit).filter(|s| !s.is_empty()) {
+                    let flake_ref = files::flake_ref(files::dir(&flake));
+                    let _ = tx.send(match nix::check_shells(&flake_ref, &check) {
+                        Ok(()) => Action::EditApplied(snapshot),
+                        Err(nix::CheckError::NotRun(e)) => {
+                            crate::log::output(
+                                "Warning",
+                                format!("Could not check the edit: {}", e),
+                            );
+                            Action::EditApplied(snapshot)
+                        }
+                        Err(nix::CheckError::Failed(error)) => {
+                            Action::CheckFailed { snapshot, error }
+                        }
+                    });
+                }
+                let _ = tx.send(Action::FlakeChanged);
+            }),
+            Effect::Restore(snapshot) => self.spawn(move |tx| match snapshot.restore() {
+                Ok(()) => {
+                    let paths: Vec<String> = snapshot
+                        .paths()
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect();
+                    crate::log::output("Success", format!("Reverted {}", paths.join(", ")));
                     let _ = tx.send(Action::FlakeChanged);
                 }
+                Err(e) => crate::log::output("Error", format!("Cannot undo: {}", e)),
             }),
             Effect::UpdateInputs {
                 flake,
@@ -293,61 +322,53 @@ impl Executor {
     }
 }
 
-/// Applies an edit and logs the outcome; returns whether the flake should be reloaded.
-fn apply_edit(tx: &Sender<Action>, flake: &std::path::Path, edit: FlakeEdit) -> bool {
+/// Applies an edit and logs the outcome; returns what it replaced when it wrote.
+fn apply_edit(tx: &Sender<Action>, flake: &std::path::Path, edit: FlakeEdit) -> Option<Snapshot> {
     let report = |result: Result<Changes, EditError>, success: String, failure: &str| match result
-        .and_then(|changes| edit::apply(&changes).map(|_| ()))
+        .and_then(|changes| edit::apply(&changes))
     {
-        Ok(()) => {
+        Ok(snapshot) => {
             crate::log::output("Success", success);
-            true
+            Some(snapshot)
         }
         Err(e) => {
             crate::log::output("Error", format!("{}: {}", failure, e));
-            false
+            None
         }
     };
     let fs = &Fs;
 
     match edit {
-        FlakeEdit::AddPackage { target, package } => {
-            add_package(tx, flake, &target, &package);
-            true
-        }
-        FlakeEdit::RemovePackages { target, packages } => {
-            report(
-                edit::remove_packages(fs, flake, &target, &packages),
-                format!(
-                    "Removed {} from {}.{}",
-                    packages.join(", "),
-                    target.system,
-                    target.name
-                ),
-                "Failed to remove packages",
-            );
-            true
-        }
+        FlakeEdit::AddPackage { target, package } => add_package(tx, flake, &target, &package),
+        FlakeEdit::RemovePackages { target, packages } => report(
+            edit::remove_packages(fs, flake, &target, &packages),
+            format!(
+                "Removed {} from {}.{}",
+                packages.join(", "),
+                target.system,
+                target.name
+            ),
+            "Failed to remove packages",
+        ),
         FlakeEdit::AddInput { name, url, package } => {
-            if !report(
+            let mut snapshot = report(
                 edit::edit_file(fs, flake, |src| edit::add_input(src, &name, &url)),
                 format!("Added input: {}", name),
                 "Failed to write flake.nix",
-            ) {
-                return true;
+            )?;
+            // One snapshot for both writes, so one undo reverts both.
+            if let Some((target, attr)) = package
+                && let Some(added) = add_package(tx, flake, &target, &input_package(&name, &attr))
+            {
+                snapshot.merge(added);
             }
-            if let Some((target, attr)) = package {
-                add_package(tx, flake, &target, &input_package(&name, &attr));
-            }
-            true
+            Some(snapshot)
         }
-        FlakeEdit::RemoveInput(name) => {
-            report(
-                edit::edit_file(fs, flake, |src| edit::remove_input(src, &name)),
-                format!("Removed input: {}", name),
-                "Failed to remove input",
-            );
-            true
-        }
+        FlakeEdit::RemoveInput(name) => report(
+            edit::edit_file(fs, flake, |src| edit::remove_input(src, &name)),
+            format!("Removed input: {}", name),
+            "Failed to remove input",
+        ),
         FlakeEdit::Pin {
             target,
             package,
@@ -366,11 +387,16 @@ fn apply_edit(tx: &Sender<Action>, flake: &std::path::Path, edit: FlakeEdit) -> 
 }
 
 /// Adds in place, or to a new managed file when nui cannot find the shell.
-fn add_package(tx: &Sender<Action>, flake: &std::path::Path, target: &ShellTarget, package: &str) {
+fn add_package(
+    tx: &Sender<Action>,
+    flake: &std::path::Path,
+    target: &ShellTarget,
+    package: &str,
+) -> Option<Snapshot> {
     let result = match edit::add_package(&Fs, flake, target, package) {
         Err(EditError::ShellNotFound(_) | EditError::AmbiguousShell(..)) => {
             edit::create_managed(&Fs, flake, &target.name, package).and_then(|(changes, line)| {
-                edit::apply(&changes)?;
+                let snapshot = edit::apply(&changes)?;
                 let file = edit::managed_path(flake, &target.name);
                 let _ = tx.send(Action::Notice(format!(
                     "nui could not find devShell {}.{} in the flake source, so it wrote {} to {}.\n\nAdd this line to the shell:\n\n{}",
@@ -380,17 +406,23 @@ fn add_package(tx: &Sender<Action>, flake: &std::path::Path, target: &ShellTarge
                     file.display(),
                     line
                 )));
-                Ok(())
+                Ok(snapshot)
             })
         }
-        result => result.and_then(|changes| edit::apply(&changes).map(|_| ())),
+        result => result.and_then(|changes| edit::apply(&changes)),
     };
     match result {
-        Ok(()) => crate::log::output(
-            "Success",
-            format!("Added {} to {}.{}", package, target.system, target.name),
-        ),
-        Err(e) => crate::log::output("Error", format!("Failed to add package: {}", e)),
+        Ok(snapshot) => {
+            crate::log::output(
+                "Success",
+                format!("Added {} to {}.{}", package, target.system, target.name),
+            );
+            Some(snapshot)
+        }
+        Err(e) => {
+            crate::log::output("Error", format!("Failed to add package: {}", e));
+            None
+        }
     }
 }
 
