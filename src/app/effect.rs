@@ -5,7 +5,7 @@ use crate::backend::system::{SystemInfo, Tools};
 use crate::backend::{github, nix, nxv, templates};
 use crate::flake::edit::{self, Changes, EditError};
 use crate::flake::locate::Fs;
-use crate::flake::{Input, Output, ShellTarget, files, parse};
+use crate::flake::{Input, Output, ShellTarget, files, lock, parse};
 use crate::pkgref::PackageRef;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -38,6 +38,12 @@ pub enum Effect {
     Edit {
         flake: PathBuf,
         edit: FlakeEdit,
+    },
+    /// An empty `inputs` updates all inputs.
+    UpdateInputs {
+        flake: PathBuf,
+        inputs: Vec<String>,
+        before: Vec<Input>,
     },
     Search {
         generation: Generation,
@@ -186,6 +192,20 @@ impl Executor {
                 if apply_edit(tx, &flake, edit) {
                     let _ = tx.send(Action::FlakeChanged);
                 }
+            }),
+            Effect::UpdateInputs {
+                flake,
+                inputs,
+                before,
+            } => self.spawn(move |tx| {
+                let result = nix::update_inputs(&files::flake_ref(files::dir(&flake)), &inputs)
+                    .map(|()| {
+                        let source = std::fs::read_to_string(&flake).unwrap_or_default();
+                        let after = parse::inputs(&source, files::read_lock(&flake).as_deref());
+                        lock::rev_changes(&before, &after)
+                    })
+                    .map_err(|e| e.to_string());
+                let _ = tx.send(Action::InputsUpdated(result));
             }),
             Effect::Search {
                 generation,

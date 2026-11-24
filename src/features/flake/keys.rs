@@ -17,6 +17,7 @@ pub fn on_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('a') if focus == Focus::Inputs => app.popup = add_input::open(app, None),
         KeyCode::Char('d') if focus == Focus::Context => remove_packages(app),
         KeyCode::Char('d') if focus == Focus::Inputs => remove_input(app),
+        KeyCode::Char(c @ ('u' | 'U')) if focus == Focus::Inputs => update_inputs(app, c == 'U'),
         KeyCode::Char(' ') if focus == Focus::Context => toggle_mark(app),
         KeyCode::Char('p') if focus == Focus::Context => toggle_pin(app),
         KeyCode::Char('i') if focus == Focus::Context => show_details(app),
@@ -92,6 +93,30 @@ fn remove_input(app: &mut App) {
             edit: FlakeEdit::RemoveInput(input.name.clone()),
         });
     }
+}
+
+fn update_inputs(app: &mut App, all: bool) {
+    let flake = &mut app.flake;
+    if flake.updating {
+        return;
+    }
+    let Some(file) = flake.selected_file().cloned() else {
+        return;
+    };
+    let inputs = if all {
+        Vec::new()
+    } else {
+        match flake.selected_input() {
+            Some(input) => vec![input.name.clone()],
+            None => return,
+        }
+    };
+    flake.updating = true;
+    app.effects.push(Effect::UpdateInputs {
+        flake: file,
+        inputs,
+        before: flake.inputs.clone(),
+    });
 }
 
 fn toggle_mark(app: &mut App) {

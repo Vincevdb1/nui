@@ -324,3 +324,74 @@ fn i_shows_details_of_the_selected_package() {
     assert!(matches!(app.popup, Popup::None));
     assert!(app.exit.is_none());
 }
+
+fn inputs_app() -> App {
+    let mut app = flake_app("devshells");
+    app.focus = Focus::Inputs;
+    app.flake.input_table.select(Some(0));
+    app
+}
+
+#[test]
+fn u_updates_the_selected_input() {
+    let mut app = inputs_app();
+    let name = app.flake.inputs[0].name.clone();
+    press(&mut app, char('u'));
+    match app.effects.as_slice() {
+        [Effect::UpdateInputs { inputs, before, .. }] => {
+            assert_eq!(inputs, &[name]);
+            assert_eq!(before, &app.flake.inputs);
+        }
+        _ => panic!("expected UpdateInputs"),
+    }
+    assert!(app.flake.updating);
+}
+
+#[test]
+fn shift_u_updates_all_inputs() {
+    let mut app = inputs_app();
+    press(&mut app, char('U'));
+    assert!(
+        matches!(app.effects.as_slice(), [Effect::UpdateInputs { inputs, .. }] if inputs.is_empty())
+    );
+}
+
+#[test]
+fn a_second_update_waits_for_the_first() {
+    let mut app = inputs_app();
+    press(&mut app, char('u'));
+    app.effects.clear();
+    press(&mut app, char('U'));
+    assert!(app.effects.is_empty());
+}
+
+#[test]
+fn u_without_a_selected_input_does_nothing() {
+    let mut app = inputs_app();
+    app.flake.input_table.select(None);
+    press(&mut app, char('u'));
+    assert!(app.effects.is_empty());
+    assert!(!app.flake.updating);
+}
+
+#[test]
+fn a_finished_update_reloads_the_flake() {
+    let mut app = inputs_app();
+    app.flake.updating = true;
+    update(&mut app, Action::InputsUpdated(Ok(vec![])));
+    assert!(!app.flake.updating);
+    assert!(
+        app.effects
+            .iter()
+            .any(|e| matches!(e, Effect::LoadFlake(_)))
+    );
+}
+
+#[test]
+fn a_failed_update_does_not_reload() {
+    let mut app = inputs_app();
+    app.flake.updating = true;
+    update(&mut app, Action::InputsUpdated(Err("offline".into())));
+    assert!(!app.flake.updating);
+    assert!(app.effects.is_empty());
+}

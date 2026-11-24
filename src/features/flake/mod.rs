@@ -2,6 +2,7 @@ pub mod keys;
 pub mod view;
 
 use crate::app::{App, Effect, Generation};
+use crate::flake::lock::{self, RevChange};
 use crate::flake::{Input, Output, Package, ShellTarget, files, parse};
 use ratatui::widgets::TableState;
 use std::collections::{HashMap, HashSet};
@@ -21,6 +22,8 @@ pub struct FlakeState {
     pub marked: HashSet<String>,
     pub updates: HashMap<String, String>,
     pub loading: bool,
+    /// Two `nix flake update` runs on one flake.lock can conflict, so only one runs.
+    pub updating: bool,
     pub error: Option<String>,
     generation: Generation,
 }
@@ -90,6 +93,17 @@ pub fn reload(app: &mut App) {
         app.effects.push(Effect::LoadFlake(file.clone()));
         app.flake.loading = true;
         app.flake.packages.clear();
+    }
+}
+
+pub fn inputs_updated(app: &mut App, result: Result<Vec<RevChange>, String>) {
+    app.flake.updating = false;
+    match result {
+        Ok(changes) => {
+            crate::log::output("Success", lock::update_summary(&changes));
+            reload(app);
+        }
+        Err(e) => crate::log::output("Error", e),
     }
 }
 

@@ -19,6 +19,7 @@ pub fn update(app: &mut App, action: Action) {
         }
         Action::FlakeLoaded(inputs, outputs) => flake::loaded(app, inputs, outputs),
         Action::FlakeChanged => flake::reload(app),
+        Action::InputsUpdated(result) => flake::inputs_updated(app, result),
         Action::PackagesLoaded(generation, result) => {
             flake::packages_loaded(app, generation, result)
         }

@@ -5,6 +5,7 @@ use crate::backend::nxv::VersionInfo;
 use crate::backend::search::SearchResult;
 use crate::backend::system::{SystemInfo, Tools};
 use crate::backend::templates::Template;
+use crate::flake::lock::RevChange;
 use crate::flake::{Input, Output, Package};
 use crate::log::LogEntry;
 use crate::pkgref::PackageRef;
@@ -18,6 +19,7 @@ pub enum Action {
     SystemProbed(SystemInfo, Tools),
     FlakeLoaded(Vec<Input>, Vec<Output>),
     FlakeChanged,
+    InputsUpdated(Result<Vec<RevChange>, String>),
     PackagesLoaded(Generation, Result<Vec<Package>, String>),
     LatestVersion {
         attr: String,

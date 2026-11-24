@@ -10,7 +10,7 @@ pub fn on_key(key: KeyEvent) -> Popup {
     }
 }
 
-const KEYBINDS: [(&str, &str); 18] = [
+const KEYBINDS: [(&str, &str); 19] = [
     ("?", "Show this help"),
     ("q", "Quit application"),
     ("m", "Switch Mode (Flake/Shell)"),
@@ -27,6 +27,7 @@ const KEYBINDS: [(&str, &str); 18] = [
     ("s", "Start shell (Shell Mode)"),
     ("a", "Add Package/Input"),
     ("d", "Remove Package/Input"),
+    ("u/U", "Update selected/all inputs (Flake Mode)"),
     ("i", "Show Package Details"),
     ("Space", "Multi-select packages"),
 ];

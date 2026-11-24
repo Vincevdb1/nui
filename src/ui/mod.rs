@@ -71,7 +71,7 @@ fn footer_text(app: &App) -> &'static str {
             "a: Add | d: Remove | i: Info | p: Pin | m: Mode | t: Templates | Shift-j/k: Select | j/k: Navigate pkgs | Space: Multi-select | ?: Help | q: Quit"
         }
         Focus::Inputs => {
-            "a: Add Input | d: Remove Input | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit"
+            "a: Add Input | d: Remove Input | u: Update Input | U: Update All | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit"
         }
         Focus::Outputs => {
             "j/k: Select Output | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit"
