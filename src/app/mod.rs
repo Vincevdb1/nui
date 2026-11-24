@@ -74,6 +74,7 @@ pub enum Popup {
     Search(Search),
     Details(SearchResult),
     ShellFlakes(FlakeList),
+    Notice(String),
 }
 
 pub enum Exit {

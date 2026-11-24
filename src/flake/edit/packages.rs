@@ -1,9 +1,10 @@
 use super::ast::{
     append_to_set, appendable_list, last_line, last_token, list_items, outputs_pattern,
-    package_lists, whitespace_before,
+    package_bindings, whitespace_before,
 };
 use super::inputs::remove_input;
-use super::{Changes, EditError, Overlay, find_shell, shell_node};
+use super::managed::{add_to_managed, add_with_import};
+use super::{Changes, EditError, Overlay, shell_lists, shell_node};
 use crate::flake::locate::{Sources, reachable_files};
 use crate::flake::model::ShellTarget;
 use crate::flake::parse;
@@ -11,6 +12,7 @@ use rnix::{Root, SyntaxKind, SyntaxNode};
 use std::path::Path;
 
 /// Appends to the shell's first package list, creating `packages` when there is none.
+/// A shell whose packages are not a list gets them from the managed file.
 pub fn add_package(
     sources: &dyn Sources,
     flake: &Path,
@@ -18,16 +20,28 @@ pub fn add_package(
     pkg: &str,
 ) -> Result<Changes, EditError> {
     let mut files = Overlay::new(sources);
-    let location = find_shell(&files, flake, target)?;
+    let shell = shell_lists(&files, flake, target)?;
+    if let Some(managed) = &shell.managed {
+        add_to_managed(&mut files, managed, pkg)?;
+        return Ok(files.changes());
+    }
+    let location = shell
+        .set
+        .ok_or_else(|| EditError::ShellNotFound(target.clone()))?;
     let src = files.get(&location.file)?;
     let set =
         shell_node(&src, &location).ok_or_else(|| EditError::ShellNotFound(target.clone()))?;
-    let edited = match appendable_list(&set) {
-        Some(list) => append_to_list(&list, pkg, &src),
-        None => append_to_set(&set, &format!("packages = [ {} ];", pkg), &src),
+    if let Some(list) = appendable_list(&set) {
+        let edited = append_to_list(&list, pkg, &src)
+            .ok_or_else(|| EditError::ShellNotFound(target.clone()))?;
+        files.set(&location.file, edited);
+    } else if package_bindings(&set).next().is_none() {
+        let edited = append_to_set(&set, &format!("packages = [ {} ];", pkg), &src)
+            .ok_or_else(|| EditError::ShellNotFound(target.clone()))?;
+        files.set(&location.file, edited);
+    } else {
+        add_with_import(&mut files, flake, &target.name, &location, pkg)?;
     }
-    .ok_or_else(|| EditError::ShellNotFound(target.clone()))?;
-    files.set(&location.file, edited);
     Ok(files.changes())
 }
 
@@ -70,13 +84,13 @@ pub fn remove_packages(
     let mut files = Overlay::new(sources);
     for pkg in pkgs {
         // Each removal moves the text, so the shell is found again.
-        let Ok(location) = find_shell(&files, flake, target) else {
+        let Ok(shell) = shell_lists(&files, flake, target) else {
             return Ok(files.changes());
         };
-        let src = files.get(&location.file)?;
-        if let Some(set) = shell_node(&src, &location) {
-            let edited = remove_from_lists(&package_lists(&set), pkg, &src);
-            files.set(&location.file, edited);
+        for file in shell.files() {
+            let src = files.get(&file)?;
+            let edited = remove_from_lists(&shell.lists(&file, &src), pkg, &src);
+            files.set(&file, edited);
         }
         if let (Some(input), _) = parse::ref_source(pkg) {
             drop_unused_input(&mut files, flake, input)?;
@@ -174,14 +188,20 @@ fn refers_to(src: &str, input: &str, bind: Option<&str>) -> bool {
     })
 }
 
-/// The located shell set as text, for the view.
-pub fn shell_source(
+/// The shell's package items as written, for the view.
+pub fn shell_packages(
     sources: &dyn Sources,
     flake: &Path,
     target: &ShellTarget,
-) -> Result<String, EditError> {
+) -> Result<Vec<String>, EditError> {
     let files = Overlay::new(sources);
-    let location = find_shell(&files, flake, target)?;
-    let src = files.get(&location.file)?;
-    Ok(src[usize::from(location.set.start())..usize::from(location.set.end())].to_string())
+    let shell = shell_lists(&files, flake, target)?;
+    let mut items = Vec::new();
+    for file in shell.files() {
+        let src = files.get(&file)?;
+        for list in shell.lists(&file, &src) {
+            items.extend(list.children().map(|i| i.to_string().trim().to_string()));
+        }
+    }
+    Ok(items)
 }

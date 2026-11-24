@@ -227,13 +227,12 @@ fn edit_fixture(
 
 /// Package items of the located shell, as the view reads them.
 fn located_packages(files: &common::Files, system: &str) -> Vec<String> {
-    let set = edit::shell_source(
+    edit::shell_packages(
         files,
         Path::new("flake.nix"),
         &common::target(system, "default"),
     )
-    .unwrap();
-    parse::package_attributes(&set)
+    .unwrap()
 }
 
 const LAYOUTS: [(&str, &str, &[&str]); 4] = [

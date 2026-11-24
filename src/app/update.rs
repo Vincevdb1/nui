@@ -48,6 +48,7 @@ pub fn update(app: &mut App, action: Action) {
         }
         Action::TemplatesListed(list) => app.templates = list,
         Action::NxvProgress(progress) => app.nxv_progress = progress,
+        Action::Notice(text) => app.popup = Popup::Notice(text),
     }
 }
 
@@ -73,6 +74,10 @@ fn on_key(app: &mut App, key: KeyEvent) {
         Popup::Search(s) => search::on_key(app, s, key),
         Popup::Details(result) => details::on_key(result, key),
         Popup::ShellFlakes(list) => shell::flakes::on_key(app, list, key),
+        Popup::Notice(text) => match key.code {
+            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => Popup::None,
+            _ => Popup::Notice(text),
+        },
     };
 }
 

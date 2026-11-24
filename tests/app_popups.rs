@@ -253,3 +253,22 @@ fn installed_details_have_a_single_version() {
     assert_eq!(result.source_input.as_deref(), Some("nixpkgs"));
     assert_eq!(result.hash.as_deref(), Some("abc"));
 }
+
+#[test]
+fn a_notice_stays_open_until_it_is_dismissed() {
+    let mut app = flake_app("devshells");
+    update(&mut app, Action::Notice("Add this line".into()));
+    assert!(matches!(&app.popup, Popup::Notice(text) if text == "Add this line"));
+    press(&mut app, char('j'));
+    assert!(matches!(app.popup, Popup::Notice(_)));
+    press(&mut app, key(KeyCode::Enter));
+    assert!(matches!(app.popup, Popup::None));
+}
+
+#[test]
+fn a_read_only_shell_refuses_removal() {
+    let mut app = flake_app("devshells");
+    app.flake.outputs[app.flake.output].edit_error = Some("not found".into());
+    assert!(app.flake.editable_target().is_none());
+    assert!(app.flake.edit_target().is_some(), "adding still works");
+}

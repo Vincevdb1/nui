@@ -33,6 +33,18 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         Popup::AddInput(form) => add_input::render(frame, form),
         Popup::Details(result) => details::render(frame, result),
         Popup::ShellFlakes(list) => shell::flakes::render(frame, list, &shell_state.flakes),
+        Popup::Notice(text) => {
+            let area = widgets::popup_frame(frame, 70, 40, "Notice", Color::Yellow);
+            frame.render_widget(
+                Paragraph::new(text.as_str())
+                    .wrap(ratatui::widgets::Wrap { trim: false })
+                    .block(
+                        ratatui::widgets::Block::default()
+                            .padding(ratatui::widgets::Padding::uniform(1)),
+                    ),
+                area.inner(Margin::new(1, 1)),
+            );
+        }
         Popup::Search(s) => {
             let system = system.as_ref();
             let ctx = search::view::Context {

@@ -1,7 +1,7 @@
-use super::ast::{is_with_list, outputs_pattern, package_lists, replace_in_lists};
+use super::ast::{is_with_list, outputs_pattern, replace_in_lists};
 use super::inputs::add_input;
 use super::packages::{drop_unused_input, inputs_bind};
-use super::{Changes, EditError, Overlay, find_shell, shell_node};
+use super::{Changes, EditError, Overlay, shell_lists};
 use crate::flake::locate::Sources;
 use crate::flake::model::{Input, ShellTarget};
 use crate::flake::parse;
@@ -44,17 +44,24 @@ pub fn pin_package(
 
     // The list item is replaced first so a package that isn't listed adds no input.
     let mut files = Overlay::new(sources);
-    let location = find_shell(&files, flake, target)?;
-    let src = files.get(&location.file)?;
-    let lists = shell_node(&src, &location)
-        .map(|set| package_lists(&set))
-        .unwrap_or_default();
-    let replaced = [attr.to_string(), format!("pkgs.{}", attr), pkg.to_string()]
-        .iter()
-        .map(|candidate| replace_in_lists(&lists, candidate, |_| pinned_ref.clone(), &src))
-        .find(|replaced| *replaced != src)
-        .ok_or_else(|| EditError::PackageNotFound(pkg.to_string()))?;
-    files.set(&location.file, replaced);
+    let shell = shell_lists(&files, flake, target)?;
+    let candidates = [attr.to_string(), format!("pkgs.{}", attr), pkg.to_string()];
+    let replaced = candidates.iter().find_map(|candidate| {
+        let edits: Vec<_> = shell
+            .files()
+            .into_iter()
+            .filter_map(|file| {
+                let src = files.read(&file)?;
+                let lists = shell.lists(&file, &src);
+                let edited = replace_in_lists(&lists, candidate, |_| pinned_ref.clone(), &src);
+                (edited != src).then_some((file, edited))
+            })
+            .collect();
+        (!edits.is_empty()).then_some(edits)
+    });
+    for (file, edited) in replaced.ok_or_else(|| EditError::PackageNotFound(pkg.to_string()))? {
+        files.set(&file, edited);
+    }
 
     let flake_src = files.get(flake)?;
     files.set(
@@ -69,7 +76,7 @@ pub fn pin_package(
 }
 
 /// Binds the outputs pattern as `inputs@{ ... }` so pinned refs can reach their input.
-fn bind_inputs(src: &str) -> String {
+pub(super) fn bind_inputs(src: &str) -> String {
     let root = Root::parse(src).syntax();
     let Some(pattern) = outputs_pattern(&root) else {
         return src.to_string();
@@ -116,26 +123,27 @@ pub fn unpin_package(
     };
 
     let mut files = Overlay::new(sources);
-    let location = find_shell(&files, flake, target)
+    let shell = shell_lists(&files, flake, target)
         .map_err(|_| EditError::PackageNotFound(pkg.to_string()))?;
-    let src = files.get(&location.file)?;
-    let result = match shell_node(&src, &location) {
+    let mut found = false;
+    for file in shell.files() {
+        let src = files.get(&file)?;
         // A bare attribute only resolves inside `with pkgs;`.
-        Some(set) => replace_in_lists(
-            &package_lists(&set),
+        let edited = replace_in_lists(
+            &shell.lists(&file, &src),
             pkg,
             |list| match is_with_list(list) {
                 true => attr.to_string(),
                 false => format!("pkgs.{}", attr),
             },
             &src,
-        ),
-        None => src.clone(),
-    };
-    if result == src {
+        );
+        found |= edited != src;
+        files.set(&file, edited);
+    }
+    if !found {
         return Err(EditError::PackageNotFound(pkg.to_string()));
     }
-    files.set(&location.file, result);
     drop_unused_input(&mut files, flake, pinned_input)?;
     Ok(files.changes())
 }

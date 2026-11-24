@@ -1,10 +1,12 @@
 mod ast;
 mod inputs;
+mod managed;
 mod packages;
 mod pin;
 
 pub use inputs::{add_input, remove_input};
-pub use packages::{add_package, remove_packages, shell_source};
+pub use managed::{create_managed, managed_path};
+pub use packages::{add_package, remove_packages, shell_packages};
 pub use pin::{pin_package, unpin_package};
 
 use crate::flake::locate::{LocateError, Location, Sources, locate, node_at};
@@ -123,4 +125,59 @@ fn find_shell(files: &Overlay, flake: &Path, target: &ShellTarget) -> Result<Loc
 fn shell_node(src: &str, location: &Location) -> Option<SyntaxNode> {
     let root = Root::parse(src).syntax();
     node_at(&root, location.set, SyntaxKind::NODE_ATTR_SET)
+}
+
+/// Where a shell's package lists live: its set, the managed file it imports, or both.
+struct ShellLists {
+    set: Option<Location>,
+    managed: Option<PathBuf>,
+}
+
+/// The shell's lists; without a located set, an existing managed file stands in for it.
+fn shell_lists(
+    files: &Overlay,
+    flake: &Path,
+    target: &ShellTarget,
+) -> Result<ShellLists, EditError> {
+    let managed = managed_path(flake, &target.name);
+    let has_managed = files.read(&managed).is_some();
+    match find_shell(files, flake, target) {
+        Ok(location) => {
+            let src = files.get(&location.file)?;
+            let set_text = &src[usize::from(location.set.start())..usize::from(location.set.end())];
+            let imported = has_managed && managed::is_imported(set_text, &target.name);
+            Ok(ShellLists {
+                set: Some(location),
+                managed: imported.then_some(managed),
+            })
+        }
+        Err(_) if has_managed => Ok(ShellLists {
+            set: None,
+            managed: Some(managed),
+        }),
+        Err(e) => Err(e),
+    }
+}
+
+impl ShellLists {
+    fn files(&self) -> Vec<PathBuf> {
+        self.set
+            .iter()
+            .map(|l| l.file.clone())
+            .chain(self.managed.clone())
+            .collect()
+    }
+
+    fn lists(&self, path: &Path, src: &str) -> Vec<SyntaxNode> {
+        let mut lists = Vec::new();
+        if let Some(location) = self.set.as_ref().filter(|l| l.file == path)
+            && let Some(set) = shell_node(src, location)
+        {
+            lists.extend(ast::package_lists(&set));
+        }
+        if self.managed.as_deref() == Some(path) {
+            lists.extend(managed::managed_lists(src));
+        }
+        lists
+    }
 }

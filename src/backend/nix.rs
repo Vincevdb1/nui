@@ -39,8 +39,9 @@ pub fn attach_shell_sources(sources: &dyn Sources, flake_nix: &Path, outputs: &m
         let Some(target) = output.shell_target() else {
             continue;
         };
-        match edit::shell_source(sources, flake_nix, &target) {
-            Ok(content) => output.content = Some(content),
+        // The items as one list literal, which `parse::package_attributes` reads.
+        match edit::shell_packages(sources, flake_nix, &target) {
+            Ok(items) => output.content = Some(format!("[ {} ]", items.join(" "))),
             Err(e) => output.edit_error = Some(e.to_string()),
         }
     }

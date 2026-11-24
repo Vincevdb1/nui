@@ -38,4 +38,5 @@ pub enum Action {
     BranchesLoaded(Result<Vec<Branch>, String>),
     TemplatesListed(Vec<Template>),
     NxvProgress(Option<String>),
+    Notice(String),
 }

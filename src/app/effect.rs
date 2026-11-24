@@ -183,7 +183,7 @@ impl Executor {
                 }
             }
             Effect::Edit { flake, edit } => self.spawn(move |tx| {
-                if apply_edit(&flake, edit) {
+                if apply_edit(tx, &flake, edit) {
                     let _ = tx.send(Action::FlakeChanged);
                 }
             }),
@@ -274,7 +274,7 @@ impl Executor {
 }
 
 /// Applies an edit and logs the outcome; returns whether the flake should be reloaded.
-fn apply_edit(flake: &std::path::Path, edit: FlakeEdit) -> bool {
+fn apply_edit(tx: &Sender<Action>, flake: &std::path::Path, edit: FlakeEdit) -> bool {
     let report = |result: Result<Changes, EditError>, success: String, failure: &str| match result
         .and_then(|changes| edit::apply(&changes))
     {
@@ -291,11 +291,7 @@ fn apply_edit(flake: &std::path::Path, edit: FlakeEdit) -> bool {
 
     match edit {
         FlakeEdit::AddPackage { target, package } => {
-            report(
-                edit::add_package(fs, flake, &target, &package),
-                format!("Added {} to {}.{}", package, target.system, target.name),
-                "Failed to add package",
-            );
+            add_package(tx, flake, &target, &package);
             true
         }
         FlakeEdit::RemovePackages { target, packages } => {
@@ -320,12 +316,7 @@ fn apply_edit(flake: &std::path::Path, edit: FlakeEdit) -> bool {
                 return true;
             }
             if let Some((target, attr)) = package {
-                let package = input_package(&name, &attr);
-                report(
-                    edit::add_package(fs, flake, &target, &package),
-                    format!("Added {} to {}.{}", package, target.system, target.name),
-                    "Failed to add package",
-                );
+                add_package(tx, flake, &target, &input_package(&name, &attr));
             }
             true
         }
@@ -351,6 +342,35 @@ fn apply_edit(flake: &std::path::Path, edit: FlakeEdit) -> bool {
             format!("Unpinned package {}", package),
             &format!("Failed to unpin {}", package),
         ),
+    }
+}
+
+/// Adds in place, or to a new managed file when nui cannot find the shell.
+fn add_package(tx: &Sender<Action>, flake: &std::path::Path, target: &ShellTarget, package: &str) {
+    let result = match edit::add_package(&Fs, flake, target, package) {
+        Err(EditError::ShellNotFound(_) | EditError::AmbiguousShell(..)) => {
+            edit::create_managed(&Fs, flake, &target.name, package).and_then(|(changes, line)| {
+                edit::apply(&changes)?;
+                let file = edit::managed_path(flake, &target.name);
+                let _ = tx.send(Action::Notice(format!(
+                    "nui could not find devShell {}.{} in the flake source, so it wrote {} to {}.\n\nAdd this line to the shell:\n\n{}",
+                    target.system,
+                    target.name,
+                    package,
+                    file.display(),
+                    line
+                )));
+                Ok(())
+            })
+        }
+        result => result.and_then(|changes| edit::apply(&changes)),
+    };
+    match result {
+        Ok(()) => crate::log::output(
+            "Success",
+            format!("Added {} to {}.{}", package, target.system, target.name),
+        ),
+        Err(e) => crate::log::output("Error", format!("Failed to add package: {}", e)),
     }
 }
 
