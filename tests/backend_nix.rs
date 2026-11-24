@@ -10,6 +10,7 @@ fn output(kind: OutputKind, path: &str) -> Output {
         path: path.to_string(),
         name: None,
         content: None,
+        edit_error: None,
     }
 }
 

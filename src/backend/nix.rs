@@ -1,6 +1,8 @@
 use super::process::{self, ChildRegistry, stdout};
 use super::search::SearchPackage;
 use super::{Error, Result};
+use crate::flake::edit;
+use crate::flake::locate::{Fs, Sources};
 use crate::flake::{Output, OutputKind, Package, files, parse};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -26,7 +28,22 @@ pub fn flake_show(flake_nix: &Path) -> Result<Vec<Output>> {
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).map_err(|e| Error::Parse("nix flake show", e))?;
     let source = std::fs::read_to_string(flake_nix).unwrap_or_default();
-    Ok(parse::outputs_from_flake_show(&json, &source))
+    let mut outputs = parse::outputs_from_flake_show(&json, &source);
+    attach_shell_sources(&Fs, flake_nix, &mut outputs);
+    Ok(outputs)
+}
+
+/// devShell content comes from the same locator the edits use, so the view and edits agree.
+pub fn attach_shell_sources(sources: &dyn Sources, flake_nix: &Path, outputs: &mut [Output]) {
+    for output in outputs {
+        let Some(target) = output.shell_target() else {
+            continue;
+        };
+        match edit::shell_source(sources, flake_nix, &target) {
+            Ok(content) => output.content = Some(content),
+            Err(e) => output.edit_error = Some(e.to_string()),
+        }
+    }
 }
 
 const PACKAGE_INFO_EXPR: &str = r#"p: let

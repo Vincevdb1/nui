@@ -72,6 +72,7 @@ pub fn outputs_from_flake_show(json: &serde_json::Value, flake_nix: &str) -> Vec
             kind,
             name: found.and_then(|o| o.name.clone()),
             content: found.and_then(|o| o.content.clone()),
+            edit_error: None,
             path,
         }
     };
@@ -215,6 +216,7 @@ fn collect_outputs(
                     .join("."),
                 name: output_name(&value),
                 content: Some(value.to_string()),
+                edit_error: None,
             });
         }
     }

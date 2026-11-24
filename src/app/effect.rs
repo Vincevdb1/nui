@@ -3,7 +3,8 @@ use crate::backend::process::{ChildRegistry, cancel_registered};
 use crate::backend::search::{self, SearchResult};
 use crate::backend::system::{SystemInfo, Tools};
 use crate::backend::{github, nix, nxv, templates};
-use crate::flake::edit::{self, EditError};
+use crate::flake::edit::{self, Changes, EditError};
+use crate::flake::locate::Fs;
 use crate::flake::{Input, Output, ShellTarget, files, parse};
 use crate::pkgref::PackageRef;
 use std::path::PathBuf;
@@ -274,7 +275,9 @@ impl Executor {
 
 /// Applies an edit and logs the outcome; returns whether the flake should be reloaded.
 fn apply_edit(flake: &std::path::Path, edit: FlakeEdit) -> bool {
-    let report = |result: Result<(), EditError>, success: String, failure: &str| match result {
+    let report = |result: Result<Changes, EditError>, success: String, failure: &str| match result
+        .and_then(|changes| edit::apply(&changes))
+    {
         Ok(()) => {
             crate::log::output("Success", success);
             true
@@ -284,23 +287,20 @@ fn apply_edit(flake: &std::path::Path, edit: FlakeEdit) -> bool {
             false
         }
     };
+    let fs = &Fs;
 
     match edit {
         FlakeEdit::AddPackage { target, package } => {
-            let result = edit::rewrite(flake, |src| edit::add_package(src, &target, &package));
             report(
-                result,
+                edit::add_package(fs, flake, &target, &package),
                 format!("Added {} to {}.{}", package, target.system, target.name),
                 "Failed to add package",
             );
             true
         }
         FlakeEdit::RemovePackages { target, packages } => {
-            let result = edit::rewrite(flake, |src| {
-                Ok(edit::remove_packages(src, &target, &packages))
-            });
             report(
-                result,
+                edit::remove_packages(fs, flake, &target, &packages),
                 format!(
                     "Removed {} from {}.{}",
                     packages.join(", "),
@@ -312,9 +312,8 @@ fn apply_edit(flake: &std::path::Path, edit: FlakeEdit) -> bool {
             true
         }
         FlakeEdit::AddInput { name, url, package } => {
-            let result = edit::rewrite(flake, |src| Ok(edit::add_input(src, &name, &url)));
             if !report(
-                result,
+                edit::edit_file(fs, flake, |src| edit::add_input(src, &name, &url)),
                 format!("Added input: {}", name),
                 "Failed to write flake.nix",
             ) {
@@ -322,9 +321,8 @@ fn apply_edit(flake: &std::path::Path, edit: FlakeEdit) -> bool {
             }
             if let Some((target, attr)) = package {
                 let package = input_package(&name, &attr);
-                let result = edit::rewrite(flake, |src| edit::add_package(src, &target, &package));
                 report(
-                    result,
+                    edit::add_package(fs, flake, &target, &package),
                     format!("Added {} to {}.{}", package, target.system, target.name),
                     "Failed to add package",
                 );
@@ -332,9 +330,8 @@ fn apply_edit(flake: &std::path::Path, edit: FlakeEdit) -> bool {
             true
         }
         FlakeEdit::RemoveInput(name) => {
-            let result = edit::rewrite(flake, |src| Ok(edit::remove_input(src, &name)));
             report(
-                result,
+                edit::edit_file(fs, flake, |src| edit::remove_input(src, &name)),
                 format!("Removed input: {}", name),
                 "Failed to remove input",
             );
@@ -344,24 +341,16 @@ fn apply_edit(flake: &std::path::Path, edit: FlakeEdit) -> bool {
             target,
             package,
             inputs,
-        } => {
-            let result = edit::rewrite(flake, |src| {
-                edit::pin_package(src, &target, &package, &inputs)
-            });
-            report(
-                result,
-                format!("Pinned package {}", package),
-                &format!("Failed to pin {}", package),
-            )
-        }
-        FlakeEdit::Unpin { target, package } => {
-            let result = edit::rewrite(flake, |src| edit::unpin_package(src, &target, &package));
-            report(
-                result,
-                format!("Unpinned package {}", package),
-                &format!("Failed to unpin {}", package),
-            )
-        }
+        } => report(
+            edit::pin_package(fs, flake, &target, &package, &inputs),
+            format!("Pinned package {}", package),
+            &format!("Failed to pin {}", package),
+        ),
+        FlakeEdit::Unpin { target, package } => report(
+            edit::unpin_package(fs, flake, &target, &package),
+            format!("Unpinned package {}", package),
+            &format!("Failed to unpin {}", package),
+        ),
     }
 }
 

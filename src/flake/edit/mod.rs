@@ -4,16 +4,24 @@ mod packages;
 mod pin;
 
 pub use inputs::{add_input, remove_input};
-pub use packages::{add_package, remove_packages};
+pub use packages::{add_package, remove_packages, shell_source};
 pub use pin::{pin_package, unpin_package};
 
+use crate::flake::locate::{LocateError, Location, Sources, locate, node_at};
 use crate::flake::model::ShellTarget;
-use std::path::Path;
+use rnix::{Root, SyntaxKind, SyntaxNode};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+/// Files an edit changed, with their new content.
+pub type Changes = Vec<(PathBuf, String)>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EditError {
     #[error("could not find devShell {}.{} in flake.nix", .0.system, .0.name)]
     ShellNotFound(ShellTarget),
+    #[error("found {1} definitions of devShell {system}.{name}", system = .0.system, name = .0.name)]
+    AmbiguousShell(ShellTarget, usize),
     #[error("could not find source input for {0}")]
     NoSourceInput(String),
     #[error("input {0} has no revision in lock file. Run 'nix flake lock' first.")]
@@ -24,19 +32,95 @@ pub enum EditError {
     NotPinned(String),
     #[error("invalid pinned package reference: {0}")]
     InvalidPinnedRef(String),
+    #[error("could not read {0}")]
+    Unreadable(PathBuf),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
 
-/// Applies a pure edit to a flake file, writing only when the content changed.
-pub fn rewrite(
-    path: &Path,
-    edit: impl FnOnce(&str) -> Result<String, EditError>,
-) -> Result<(), EditError> {
-    let src = std::fs::read_to_string(path)?;
-    let edited = edit(&src)?;
-    if edited != src {
-        std::fs::write(path, edited)?;
+impl EditError {
+    fn locate(target: &ShellTarget, error: LocateError) -> Self {
+        match error {
+            LocateError::NotFound => Self::ShellNotFound(target.clone()),
+            LocateError::Ambiguous(n) => Self::AmbiguousShell(target.clone(), n),
+        }
+    }
+}
+
+/// Writes each changed file, creating its directory when needed.
+pub fn apply(changes: &Changes) -> Result<(), EditError> {
+    for (path, content) in changes {
+        if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(path, content)?;
     }
     Ok(())
+}
+
+/// A pure text edit of one file, as `Changes`.
+pub fn edit_file(
+    sources: &dyn Sources,
+    path: &Path,
+    edit: impl FnOnce(&str) -> String,
+) -> Result<Changes, EditError> {
+    let mut files = Overlay::new(sources);
+    let src = files.get(path)?;
+    files.set(path, edit(&src));
+    Ok(files.changes())
+}
+
+/// Files read once and edited in memory; reads see earlier edits.
+struct Overlay<'a> {
+    sources: &'a dyn Sources,
+    files: BTreeMap<PathBuf, (Option<String>, String)>,
+}
+
+impl<'a> Overlay<'a> {
+    fn new(sources: &'a dyn Sources) -> Self {
+        Self {
+            sources,
+            files: BTreeMap::new(),
+        }
+    }
+
+    fn get(&self, path: &Path) -> Result<String, EditError> {
+        self.read(path)
+            .ok_or_else(|| EditError::Unreadable(path.to_path_buf()))
+    }
+
+    fn set(&mut self, path: &Path, content: String) {
+        let original = self.sources.read(path);
+        self.files
+            .entry(path.to_path_buf())
+            .or_insert((original, String::new()))
+            .1 = content;
+    }
+
+    fn changes(self) -> Changes {
+        self.files
+            .into_iter()
+            .filter(|(_, (original, content))| original.as_ref() != Some(content))
+            .map(|(path, (_, content))| (path, content))
+            .collect()
+    }
+}
+
+impl Sources for Overlay<'_> {
+    fn read(&self, path: &Path) -> Option<String> {
+        match self.files.get(path) {
+            Some((_, content)) => Some(content.clone()),
+            None => self.sources.read(path),
+        }
+    }
+}
+
+fn find_shell(files: &Overlay, flake: &Path, target: &ShellTarget) -> Result<Location, EditError> {
+    locate(files, flake, target).map_err(|e| EditError::locate(target, e))
+}
+
+/// The located shell set, parsed from its file.
+fn shell_node(src: &str, location: &Location) -> Option<SyntaxNode> {
+    let root = Root::parse(src).syntax();
+    node_at(&root, location.set, SyntaxKind::NODE_ATTR_SET)
 }

@@ -87,6 +87,8 @@ pub struct Output {
     pub path: String,
     pub name: Option<String>,
     pub content: Option<String>,
+    /// Why nui cannot edit this output's packages in place.
+    pub edit_error: Option<String>,
 }
 
 /// The devShell an edit applies to; only devShells are editable.

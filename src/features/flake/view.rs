@@ -110,7 +110,7 @@ fn render_content(app: &mut App, frame: &mut Frame, area: Rect) {
     let flake = &app.flake;
     let title = match app.focus {
         Focus::Context | Focus::Outputs => format!(
-            " Content: {} / {} ",
+            " Content: {} / {}{} ",
             flake
                 .selected_file()
                 .map(|f| f.display().to_string())
@@ -119,6 +119,11 @@ fn render_content(app: &mut App, frame: &mut Frame, area: Rect) {
                 .selected_output()
                 .map(|o| o.path.as_str())
                 .unwrap_or("None"),
+            flake
+                .selected_output()
+                .and_then(|o| o.edit_error.as_ref())
+                .map(|e| format!(" (read-only: {})", e))
+                .unwrap_or_default(),
         ),
         Focus::Inputs => " Content: Inputs ".to_string(),
         Focus::Title => " Content: Title ".to_string(),

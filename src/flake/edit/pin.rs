@@ -1,18 +1,21 @@
-use super::EditError;
-use super::ast::{is_with_list, outputs_pattern, package_lists, replace_in_lists, shell_set};
-use super::inputs::{add_input, remove_input};
-use super::packages::input_is_used;
+use super::ast::{is_with_list, outputs_pattern, package_lists, replace_in_lists};
+use super::inputs::add_input;
+use super::packages::drop_unused_input;
+use super::{Changes, EditError, Overlay, find_shell, shell_node};
+use crate::flake::locate::Sources;
 use crate::flake::model::{Input, ShellTarget};
 use crate::flake::parse;
 use rnix::{Root, SyntaxKind};
+use std::path::Path;
 
 /// Pins `pkg` to the locked revision of its source input via a dedicated input.
 pub fn pin_package(
-    src: &str,
+    sources: &dyn Sources,
+    flake: &Path,
     target: &ShellTarget,
     pkg: &str,
     inputs: &[Input],
-) -> Result<String, EditError> {
+) -> Result<Changes, EditError> {
     let (source, attr) = match parse::ref_source(pkg) {
         (Some("pkgs" | "self") | None, attr) => ("nixpkgs", attr),
         (Some(input), attr) => (input, attr),
@@ -35,21 +38,29 @@ pub fn pin_package(
     );
 
     // The list item is replaced first so a package that isn't listed adds no input.
-    let root = Root::parse(src).syntax();
-    let lists = shell_set(&root, target)
+    let mut files = Overlay::new(sources);
+    let location = find_shell(&files, flake, target)?;
+    let src = files.get(&location.file)?;
+    let lists = shell_node(&src, &location)
         .map(|set| package_lists(&set))
         .unwrap_or_default();
     let replaced = [attr.to_string(), format!("pkgs.{}", attr), pkg.to_string()]
         .iter()
-        .map(|candidate| replace_in_lists(&lists, candidate, |_| pinned_ref.clone(), src))
-        .find(|replaced| replaced != src)
+        .map(|candidate| replace_in_lists(&lists, candidate, |_| pinned_ref.clone(), &src))
+        .find(|replaced| *replaced != src)
         .ok_or_else(|| EditError::PackageNotFound(pkg.to_string()))?;
+    files.set(&location.file, replaced);
 
-    Ok(bind_inputs(&add_input(
-        &replaced,
-        &pinned_input,
-        &pinned_url(input, rev),
-    )))
+    let flake_src = files.get(flake)?;
+    files.set(
+        flake,
+        bind_inputs(&add_input(
+            &flake_src,
+            &pinned_input,
+            &pinned_url(input, rev),
+        )),
+    );
+    Ok(files.changes())
 }
 
 /// Binds the outputs pattern as `inputs@{ ... }` so pinned refs can reach their input.
@@ -86,7 +97,12 @@ fn pinned_url(input: &Input, rev: &str) -> String {
 }
 
 /// Reverts a pinned `inputs.<name>.legacyPackages.${system}.<attr>` reference.
-pub fn unpin_package(src: &str, target: &ShellTarget, pkg: &str) -> Result<String, EditError> {
+pub fn unpin_package(
+    sources: &dyn Sources,
+    flake: &Path,
+    target: &ShellTarget,
+    pkg: &str,
+) -> Result<Changes, EditError> {
     if !pkg.starts_with("inputs.") {
         return Err(EditError::NotPinned(pkg.to_string()));
     }
@@ -97,8 +113,11 @@ pub fn unpin_package(src: &str, target: &ShellTarget, pkg: &str) -> Result<Strin
     let pinned_input = parts[1];
     let attr = parts[parts.len() - 1];
 
-    let root = Root::parse(src).syntax();
-    let mut result = match shell_set(&root, target) {
+    let mut files = Overlay::new(sources);
+    let location = find_shell(&files, flake, target)
+        .map_err(|_| EditError::PackageNotFound(pkg.to_string()))?;
+    let src = files.get(&location.file)?;
+    let result = match shell_node(&src, &location) {
         // A bare attribute only resolves inside `with pkgs;`.
         Some(set) => replace_in_lists(
             &package_lists(&set),
@@ -107,15 +126,14 @@ pub fn unpin_package(src: &str, target: &ShellTarget, pkg: &str) -> Result<Strin
                 true => attr.to_string(),
                 false => format!("pkgs.{}", attr),
             },
-            src,
+            &src,
         ),
-        None => src.to_string(),
+        None => src.clone(),
     };
     if result == src {
         return Err(EditError::PackageNotFound(pkg.to_string()));
     }
-    if !input_is_used(&result, pinned_input) {
-        result = remove_input(&result, pinned_input);
-    }
-    Ok(result)
+    files.set(&location.file, result);
+    drop_unused_input(&mut files, flake, pinned_input)?;
+    Ok(files.changes())
 }

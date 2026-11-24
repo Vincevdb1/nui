@@ -1,7 +1,7 @@
 mod common;
 
 use common::{assert_parses, flake_src, lock_src, x86};
-use nui::flake::edit::{self, EditError};
+use nui::flake::edit::EditError;
 use nui::flake::{Input, parse};
 
 const FLAT_REV: &str = "b6018f87da91d19d0ab4cf979885689b469cdd41";
@@ -12,7 +12,7 @@ fn locked_inputs(fixture: &str) -> Vec<Input> {
 }
 
 fn pin_flat(pkg: &str) -> Result<String, EditError> {
-    edit::pin_package(
+    common::pin(
         &flake_src("flat-paths"),
         &x86("default"),
         pkg,
@@ -53,7 +53,7 @@ fn bare_and_qualified_names_pin_the_same_item() {
         branch: None,
         rev: Some("deadbeef".to_string()),
     }];
-    let edited = edit::pin_package(&src, &x86("default"), "isort", &inputs).unwrap();
+    let edited = common::pin(&src, &x86("default"), "isort", &inputs).unwrap();
     assert_parses(&edited);
     assert!(
         edited.contains("inputs.nixpkgs-isort.legacyPackages.${system}.isort"),
@@ -65,8 +65,7 @@ fn bare_and_qualified_names_pin_the_same_item() {
 #[test]
 fn an_existing_inputs_binding_is_reused() {
     let src = flake_src("pinned");
-    let edited =
-        edit::pin_package(&src, &x86("default"), "pkgs.git", &locked_inputs("pinned")).unwrap();
+    let edited = common::pin(&src, &x86("default"), "pkgs.git", &locked_inputs("pinned")).unwrap();
     assert_parses(&edited);
     assert_eq!(edited.matches("inputs@").count(), 1, "{edited}");
 }
@@ -75,7 +74,7 @@ fn an_existing_inputs_binding_is_reused() {
 fn pinning_requires_a_locked_source_input() {
     let mut inputs = locked_inputs("flat-paths");
     inputs[0].rev = None;
-    let err = edit::pin_package(
+    let err = common::pin(
         &flake_src("flat-paths"),
         &x86("default"),
         "pkgs.git",
@@ -87,7 +86,7 @@ fn pinning_requires_a_locked_source_input() {
 #[test]
 fn pinning_without_a_nixpkgs_input_fails() {
     // devshells takes nixpkgs from the registry, so there is nothing to pin against.
-    let err = edit::pin_package(
+    let err = common::pin(
         &flake_src("devshells"),
         &x86("default"),
         "isort",
@@ -106,7 +105,7 @@ fn pinning_an_absent_package_leaves_the_flake_alone() {
 
 #[test]
 fn unpinning_restores_the_package_and_drops_the_input() {
-    let edited = edit::unpin_package(&flake_src("pinned"), &x86("default"), PINNED_HELLO).unwrap();
+    let edited = common::unpin(&flake_src("pinned"), &x86("default"), PINNED_HELLO).unwrap();
     assert_parses(&edited);
     assert!(!edited.contains("nixpkgs-hello"), "{edited}");
     let inputs: Vec<_> = parse::inputs(&edited, None)
@@ -118,7 +117,7 @@ fn unpinning_restores_the_package_and_drops_the_input() {
 
 #[test]
 fn unpinning_writes_a_reference_that_resolves() {
-    let edited = edit::unpin_package(&flake_src("pinned"), &x86("default"), PINNED_HELLO).unwrap();
+    let edited = common::unpin(&flake_src("pinned"), &x86("default"), PINNED_HELLO).unwrap();
     assert!(
         edited.contains("          pkgs.git\n          pkgs.hello\n"),
         "{edited}"
@@ -129,7 +128,7 @@ fn unpinning_writes_a_reference_that_resolves() {
 fn pin_then_unpin_restores_the_original() {
     let src = flake_src("flat-paths");
     let pinned = pin_flat("pkgs.git").unwrap();
-    let unpinned = edit::unpin_package(
+    let unpinned = common::unpin(
         &pinned,
         &x86("default"),
         "inputs.nixpkgs-git.legacyPackages.${system}.git",
@@ -142,15 +141,15 @@ fn pin_then_unpin_restores_the_original() {
 fn unpinning_rejects_references_that_are_not_pinned() {
     let src = flake_src("pinned");
     assert!(matches!(
-        edit::unpin_package(&src, &x86("default"), "pkgs.git"),
+        common::unpin(&src, &x86("default"), "pkgs.git"),
         Err(EditError::NotPinned(_))
     ));
     assert!(matches!(
-        edit::unpin_package(&src, &x86("default"), "inputs.foo.hello"),
+        common::unpin(&src, &x86("default"), "inputs.foo.hello"),
         Err(EditError::InvalidPinnedRef(_))
     ));
     assert!(matches!(
-        edit::unpin_package(&src, &x86("missing"), PINNED_HELLO),
+        common::unpin(&src, &x86("missing"), PINNED_HELLO),
         Err(EditError::PackageNotFound(_))
     ));
 }
@@ -207,7 +206,7 @@ fn pinned_urls_keep_the_input_type() {
     ];
     for (url, expected) in cases {
         let (src, inputs) = flake_with_input(url);
-        let edited = edit::pin_package(
+        let edited = common::pin(
             &src,
             &x86("default"),
             "tools.packages.x86_64-linux.foo",

@@ -122,3 +122,66 @@ pub fn sources(name: &str) -> std::collections::HashMap<PathBuf, String> {
         })
         .collect()
 }
+
+pub type Files = std::collections::HashMap<PathBuf, String>;
+
+pub fn flake_files(src: &str) -> Files {
+    Files::from([(PathBuf::from("flake.nix"), src.to_string())])
+}
+
+/// `files` with the changes of an edit applied.
+pub fn merged(files: &Files, changes: nui::flake::edit::Changes) -> Files {
+    let mut files = files.clone();
+    files.extend(changes);
+    files
+}
+
+fn on_flake(
+    src: &str,
+    edit: impl FnOnce(
+        &Files,
+        &std::path::Path,
+    ) -> Result<nui::flake::edit::Changes, nui::flake::edit::EditError>,
+) -> Result<String, nui::flake::edit::EditError> {
+    let files = flake_files(src);
+    let changes = edit(&files, std::path::Path::new("flake.nix"))?;
+    Ok(merged(&files, changes)
+        .remove(std::path::Path::new("flake.nix"))
+        .unwrap())
+}
+
+pub fn add(
+    src: &str,
+    target: &ShellTarget,
+    pkg: &str,
+) -> Result<String, nui::flake::edit::EditError> {
+    on_flake(src, |s, f| nui::flake::edit::add_package(s, f, target, pkg))
+}
+
+pub fn remove(src: &str, target: &ShellTarget, pkgs: &[String]) -> String {
+    on_flake(src, |s, f| {
+        nui::flake::edit::remove_packages(s, f, target, pkgs)
+    })
+    .unwrap()
+}
+
+pub fn pin(
+    src: &str,
+    target: &ShellTarget,
+    pkg: &str,
+    inputs: &[nui::flake::Input],
+) -> Result<String, nui::flake::edit::EditError> {
+    on_flake(src, |s, f| {
+        nui::flake::edit::pin_package(s, f, target, pkg, inputs)
+    })
+}
+
+pub fn unpin(
+    src: &str,
+    target: &ShellTarget,
+    pkg: &str,
+) -> Result<String, nui::flake::edit::EditError> {
+    on_flake(src, |s, f| {
+        nui::flake::edit::unpin_package(s, f, target, pkg)
+    })
+}

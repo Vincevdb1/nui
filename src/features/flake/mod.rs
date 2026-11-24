@@ -42,6 +42,15 @@ impl FlakeState {
         self.inputs.get(self.input_table.selected()?)
     }
 
+    /// Like `edit_target`, but also refuses a shell that nui cannot edit in place.
+    pub fn editable_target(&self) -> Option<(PathBuf, ShellTarget)> {
+        if let Some(reason) = self.selected_output().and_then(|o| o.edit_error.as_ref()) {
+            crate::log::output("Error", format!("This shell is read-only: {}", reason));
+            return None;
+        }
+        self.edit_target()
+    }
+
     /// The file and devShell an edit applies to, logging why when there is none.
     pub fn edit_target(&self) -> Option<(PathBuf, ShellTarget)> {
         let file = self.selected_file()?.clone();

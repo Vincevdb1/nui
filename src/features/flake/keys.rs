@@ -75,7 +75,7 @@ fn remove_packages(app: &mut App) {
     if packages.is_empty() {
         return;
     }
-    if let Some((file, target)) = flake.edit_target() {
+    if let Some((file, target)) = flake.editable_target() {
         flake.marked.clear();
         app.effects.push(Effect::Edit {
             flake: file,
@@ -108,7 +108,7 @@ fn toggle_pin(app: &mut App) {
     let Some(selected) = flake.selected_package() else {
         return;
     };
-    let Some((file, target)) = flake.edit_target() else {
+    let Some((file, target)) = flake.editable_target() else {
         return;
     };
     let package = selected.qualified_name();

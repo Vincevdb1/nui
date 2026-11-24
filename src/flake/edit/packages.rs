@@ -1,24 +1,37 @@
-use super::EditError;
 use super::ast::{
-    append_to_set, last_line, last_token, list_items, package_lists, shell_set, whitespace_before,
+    append_to_set, last_line, last_token, list_items, outputs_pattern, package_lists,
+    whitespace_before,
 };
 use super::inputs::remove_input;
+use super::{Changes, EditError, Overlay, find_shell, shell_node};
+use crate::flake::locate::{Sources, reachable_files};
 use crate::flake::model::ShellTarget;
 use crate::flake::parse;
 use rnix::{Root, SyntaxKind, SyntaxNode};
+use std::path::Path;
 
 /// Appends to the shell's first package list, creating `packages` when there is none.
-pub fn add_package(src: &str, target: &ShellTarget, pkg: &str) -> Result<String, EditError> {
-    let root = Root::parse(src).syntax();
-    let set = shell_set(&root, target).ok_or_else(|| EditError::ShellNotFound(target.clone()))?;
+pub fn add_package(
+    sources: &dyn Sources,
+    flake: &Path,
+    target: &ShellTarget,
+    pkg: &str,
+) -> Result<Changes, EditError> {
+    let mut files = Overlay::new(sources);
+    let location = find_shell(&files, flake, target)?;
+    let src = files.get(&location.file)?;
+    let set =
+        shell_node(&src, &location).ok_or_else(|| EditError::ShellNotFound(target.clone()))?;
     let edited = match package_lists(&set).first() {
-        Some(list) => append_to_list(list, pkg, src),
-        None => append_to_set(&set, &format!("packages = [ {} ];", pkg), src),
-    };
-    edited.ok_or_else(|| EditError::ShellNotFound(target.clone()))
+        Some(list) => append_to_list(list, pkg, &src),
+        None => append_to_set(&set, &format!("packages = [ {} ];", pkg), &src),
+    }
+    .ok_or_else(|| EditError::ShellNotFound(target.clone()))?;
+    files.set(&location.file, edited);
+    Ok(files.changes())
 }
 
-fn append_to_list(list: &SyntaxNode, pkg: &str, src: &str) -> Option<String> {
+pub(super) fn append_to_list(list: &SyntaxNode, pkg: &str, src: &str) -> Option<String> {
     let close = last_token(list, "]")?;
     let ws = whitespace_before(&close);
     let item_indent = list
@@ -48,26 +61,47 @@ fn append_to_list(list: &SyntaxNode, pkg: &str, src: &str) -> Option<String> {
 }
 
 /// Removes the packages from the shell and drops inputs that are no longer referenced.
-pub fn remove_packages(src: &str, target: &ShellTarget, pkgs: &[String]) -> String {
-    let mut result = src.to_string();
+pub fn remove_packages(
+    sources: &dyn Sources,
+    flake: &Path,
+    target: &ShellTarget,
+    pkgs: &[String],
+) -> Result<Changes, EditError> {
+    let mut files = Overlay::new(sources);
     for pkg in pkgs {
-        result = remove_from_shell(&result, target, pkg);
-        if let (Some(input), _) = parse::ref_source(pkg)
-            && parse::inputs(&result, None).iter().any(|i| i.name == input)
-            && !input_is_used(&result, input)
-        {
-            result = remove_input(&result, input);
+        // Each removal moves the text, so the shell is found again.
+        let Ok(location) = find_shell(&files, flake, target) else {
+            return Ok(files.changes());
+        };
+        let src = files.get(&location.file)?;
+        if let Some(set) = shell_node(&src, &location) {
+            let edited = remove_from_lists(&package_lists(&set), pkg, &src);
+            files.set(&location.file, edited);
+        }
+        if let (Some(input), _) = parse::ref_source(pkg) {
+            drop_unused_input(&mut files, flake, input)?;
         }
     }
-    result
+    Ok(files.changes())
 }
 
-fn remove_from_shell(src: &str, target: &ShellTarget, pkg: &str) -> String {
-    let root = Root::parse(src).syntax();
-    let Some(set) = shell_set(&root, target) else {
-        return src.to_string();
-    };
-    let mut ranges: Vec<_> = package_lists(&set)
+/// Removes the input from flake.nix when nothing refers to it any more.
+pub(super) fn drop_unused_input(
+    files: &mut Overlay,
+    flake: &Path,
+    input: &str,
+) -> Result<(), EditError> {
+    let src = files.get(flake)?;
+    if parse::inputs(&src, None).iter().any(|i| i.name == input)
+        && !input_is_used(files, flake, input)
+    {
+        files.set(flake, remove_input(&src, input));
+    }
+    Ok(())
+}
+
+pub(super) fn remove_from_lists(lists: &[SyntaxNode], pkg: &str, src: &str) -> String {
+    let mut ranges: Vec<_> = lists
         .iter()
         .flat_map(|list| list_items(list, pkg).collect::<Vec<_>>())
         .map(|item| {
@@ -88,11 +122,66 @@ fn remove_from_shell(src: &str, target: &ShellTarget, pkg: &str) -> String {
     result
 }
 
-/// Whether any output still lists a package from `input`.
-pub fn input_is_used(src: &str, input: &str) -> bool {
-    parse::outputs(src).iter().any(|output| {
-        parse::package_attributes(output.content.as_deref().unwrap_or(""))
-            .iter()
-            .any(|a| a == input || parse::ref_source(a).0 == Some(input))
+/// Whether any file the flake reaches still refers to `input`.
+pub(super) fn input_is_used(sources: &dyn Sources, flake: &Path, input: &str) -> bool {
+    let bind = sources.read(flake).and_then(|src| inputs_bind(&src));
+    reachable_files(sources, flake)
+        .iter()
+        .any(|(_, src)| refers_to(src, input, bind.as_deref()))
+}
+
+/// The name in `name@{ ... }` of the outputs pattern.
+pub(super) fn inputs_bind(flake_src: &str) -> Option<String> {
+    let root = Root::parse(flake_src).syntax();
+    outputs_pattern(&root)?
+        .children()
+        .find(|c| c.kind() == SyntaxKind::NODE_PAT_BIND)?
+        .children()
+        .find(|c| c.kind() == SyntaxKind::NODE_IDENT)
+        .map(|i| i.text().to_string())
+}
+
+/// A use of `input` as a value, or as `inputs.<input>`; keys and parameters do not count.
+fn refers_to(src: &str, input: &str, bind: Option<&str>) -> bool {
+    let root = Root::parse(src).syntax();
+    root.descendants().any(|n| match n.kind() {
+        SyntaxKind::NODE_IDENT => {
+            n.text() == input
+                && !n.parent().is_some_and(|p| {
+                    matches!(
+                        p.kind(),
+                        SyntaxKind::NODE_ATTRPATH
+                            | SyntaxKind::NODE_PAT_ENTRY
+                            | SyntaxKind::NODE_IDENT_PARAM
+                            | SyntaxKind::NODE_PAT_BIND
+                    )
+                })
+        }
+        SyntaxKind::NODE_SELECT => {
+            let mut children = n.children();
+            let head = children
+                .next()
+                .filter(|h| h.kind() == SyntaxKind::NODE_IDENT);
+            let first = children
+                .next()
+                .and_then(|path| path.children().next())
+                .map(|s| s.text().to_string());
+            head.is_some_and(|h| {
+                h.text() == "inputs" || Some(h.text().to_string().as_str()) == bind
+            }) && first.as_deref() == Some(input)
+        }
+        _ => false,
     })
+}
+
+/// The located shell set as text, for the view.
+pub fn shell_source(
+    sources: &dyn Sources,
+    flake: &Path,
+    target: &ShellTarget,
+) -> Result<String, EditError> {
+    let files = Overlay::new(sources);
+    let location = find_shell(&files, flake, target)?;
+    let src = files.get(&location.file)?;
+    Ok(src[usize::from(location.set.start())..usize::from(location.set.end())].to_string())
 }
