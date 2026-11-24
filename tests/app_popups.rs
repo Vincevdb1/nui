@@ -272,3 +272,62 @@ fn a_read_only_shell_refuses_removal() {
     assert!(app.flake.editable_target().is_none());
     assert!(app.flake.edit_target().is_some(), "adding still works");
 }
+
+use nui::features::flake::check::CheckFailure;
+
+fn failed(app: &mut App) {
+    update(
+        app,
+        Action::CheckFailed {
+            snapshot: Default::default(),
+            error: "error: undefined variable".into(),
+        },
+    );
+}
+
+#[test]
+fn a_failed_check_opens_the_popup() {
+    let mut app = flake_app("devshells");
+    failed(&mut app);
+    assert!(
+        matches!(&app.popup, Popup::CheckFailed(CheckFailure { error, .. }) if error == "error: undefined variable")
+    );
+}
+
+#[test]
+fn r_reverts_the_failed_edit() {
+    let mut app = flake_app("devshells");
+    failed(&mut app);
+    press(&mut app, char('r'));
+    assert!(matches!(app.popup, Popup::None));
+    assert!(matches!(app.effects.as_slice(), [Effect::Restore(_)]));
+}
+
+#[test]
+fn esc_keeps_the_edit_and_allows_undo() {
+    let mut app = flake_app("devshells");
+    failed(&mut app);
+    press(&mut app, key(KeyCode::Esc));
+    assert!(matches!(app.popup, Popup::None));
+    assert!(app.effects.is_empty());
+    assert!(app.flake.last_edit.is_some());
+}
+
+#[test]
+fn enter_does_not_close_the_popup() {
+    let mut app = flake_app("devshells");
+    failed(&mut app);
+    press(&mut app, key(KeyCode::Enter));
+    assert!(matches!(app.popup, Popup::CheckFailed(_)));
+}
+
+#[test]
+fn z_undoes_the_last_edit_once() {
+    let mut app = flake_app("devshells");
+    app.flake.last_edit = Some(Default::default());
+    press(&mut app, char('z'));
+    assert!(matches!(app.effects.as_slice(), [Effect::Restore(_)]));
+    app.effects.clear();
+    press(&mut app, char('z'));
+    assert!(app.effects.is_empty());
+}

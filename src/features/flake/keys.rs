@@ -21,6 +21,7 @@ pub fn on_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char(' ') if focus == Focus::Context => toggle_mark(app),
         KeyCode::Char('p') if focus == Focus::Context => toggle_pin(app),
         KeyCode::Char('i') if focus == Focus::Context => show_details(app),
+        KeyCode::Char('z') => undo(app),
         KeyCode::Char(c @ ('j' | 'k')) if focus == Focus::Context => {
             let len = app.flake.packages.len();
             app.flake.package_table.step(len, c == 'j');
@@ -112,6 +113,13 @@ fn update_inputs(app: &mut App, all: bool) {
         inputs,
         before: flake.inputs.clone(),
     });
+}
+
+fn undo(app: &mut App) {
+    match app.flake.last_edit.take() {
+        Some(snapshot) => app.effects.push(Effect::Restore(snapshot)),
+        None => crate::log::info("Nothing to undo"),
+    }
 }
 
 fn toggle_mark(app: &mut App) {

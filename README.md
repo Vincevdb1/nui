@@ -59,6 +59,7 @@ nix run github:Vincevdb1/nui#nui-unwrapped
 - **m**: Toggle between **Flake** and **Shell** modes.
 - **a**: Add a new package or input (depending on focus).
 - **d**: Remove the selected package or input.
+- **z**: (Flake Mode) Undo the last edit.
 - **u / U**: (Inputs) Update the selected input, or all inputs.
 - **i**: View detailed information for the selected package.
 - **f**: (Shell Mode) Manage extra flakes whose packages are included in searches.

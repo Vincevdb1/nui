@@ -33,6 +33,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         Popup::AddInput(form) => add_input::render(frame, form),
         Popup::Details(result) => details::render(frame, result),
         Popup::ShellFlakes(list) => shell::flakes::render(frame, list, &shell_state.flakes),
+        Popup::CheckFailed(failure) => flake::check::render(frame, failure),
         Popup::Notice(text) => {
             let area = widgets::popup_frame(frame, 70, 40, "Notice", Color::Yellow);
             frame.render_widget(
@@ -68,7 +69,7 @@ fn footer_text(app: &App) -> &'static str {
             "Tab: Switch focus | m: Switch Mode | t: Templates | 1-5: Select tab | ?: Help | q: Quit"
         }
         Focus::Context => {
-            "a: Add | d: Remove | i: Info | p: Pin | m: Mode | t: Templates | Shift-j/k: Select | j/k: Navigate pkgs | Space: Multi-select | ?: Help | q: Quit"
+            "a: Add | d: Remove | i: Info | p: Pin | z: Undo | m: Mode | t: Templates | Shift-j/k: Select | j/k: Navigate pkgs | Space: Multi-select | ?: Help | q: Quit"
         }
         Focus::Inputs => {
             "a: Add Input | d: Remove Input | u: Update Input | U: Update All | m: Switch Mode | t: Templates | Tab: Switch focus | ?: Help | q: Quit"

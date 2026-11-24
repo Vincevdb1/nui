@@ -75,6 +75,7 @@ pub enum Popup {
     Details(SearchResult),
     ShellFlakes(FlakeList),
     Notice(String),
+    CheckFailed(crate::features::flake::check::CheckFailure),
 }
 
 pub enum Exit {

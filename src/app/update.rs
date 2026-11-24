@@ -21,8 +21,7 @@ pub fn update(app: &mut App, action: Action) {
         Action::FlakeChanged => flake::reload(app),
         Action::EditApplied(snapshot) => app.flake.last_edit = Some(snapshot),
         Action::CheckFailed { snapshot, error } => {
-            crate::log::output("Error", format!("The edit failed its check:\n{}", error));
-            app.flake.last_edit = Some(snapshot);
+            app.popup = Popup::CheckFailed(flake::check::CheckFailure { error, snapshot })
         }
         Action::InputsUpdated(result) => flake::inputs_updated(app, result),
         Action::PackagesLoaded(generation, result) => {
@@ -80,6 +79,7 @@ fn on_key(app: &mut App, key: KeyEvent) {
         Popup::Search(s) => search::on_key(app, s, key),
         Popup::Details(result) => details::on_key(result, key),
         Popup::ShellFlakes(list) => shell::flakes::on_key(app, list, key),
+        Popup::CheckFailed(failure) => flake::check::on_key(app, failure, key),
         Popup::Notice(text) => match key.code {
             KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => Popup::None,
             _ => Popup::Notice(text),

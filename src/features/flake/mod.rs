@@ -1,3 +1,4 @@
+pub mod check;
 pub mod keys;
 pub mod view;
 
