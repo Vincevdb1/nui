@@ -3,11 +3,13 @@ mod inputs;
 mod managed;
 mod packages;
 mod pin;
+mod snapshot;
 
 pub use inputs::{add_input, remove_input};
 pub use managed::{create_managed, managed_path};
 pub use packages::{add_package, remove_packages, shell_packages};
 pub use pin::{pin_package, unpin_package};
+pub use snapshot::Snapshot;
 
 use crate::flake::locate::{LocateError, Location, Sources, locate, node_at};
 use crate::flake::model::ShellTarget;
@@ -38,6 +40,10 @@ pub enum EditError {
     InputsNotInScope(PathBuf),
     #[error("could not read {0}")]
     Unreadable(PathBuf),
+    #[error("the edit would make {0} invalid Nix")]
+    InvalidNix(PathBuf),
+    #[error("{0} changed after nui wrote it")]
+    ChangedOnDisk(PathBuf),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -51,15 +57,32 @@ impl EditError {
     }
 }
 
-/// Writes each changed file, creating its directory when needed.
-pub fn apply(changes: &Changes) -> Result<(), EditError> {
-    for (path, content) in changes {
+/// Writes each changed file, creating its directory when needed. Refuses before any write
+/// when an edit would break the syntax of a `.nix` file that parsed before.
+pub fn apply(changes: &Changes) -> Result<Snapshot, EditError> {
+    let befores: Vec<Option<String>> = changes
+        .iter()
+        .map(|(path, _)| std::fs::read_to_string(path).ok())
+        .collect();
+    for ((path, content), before) in changes.iter().zip(&befores) {
+        let is_nix = path.extension().is_some_and(|e| e == "nix");
+        if is_nix && !parses(content) && before.as_deref().is_none_or(parses) {
+            return Err(EditError::InvalidNix(path.clone()));
+        }
+    }
+    let mut snapshot = Snapshot::default();
+    for ((path, content), before) in changes.iter().zip(befores) {
         if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
             std::fs::create_dir_all(dir)?;
         }
         std::fs::write(path, content)?;
+        snapshot.record(path.clone(), before, content.clone());
     }
-    Ok(())
+    Ok(snapshot)
+}
+
+fn parses(src: &str) -> bool {
+    Root::parse(src).errors().is_empty()
 }
 
 /// A pure text edit of one file, as `Changes`.

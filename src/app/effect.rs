@@ -296,7 +296,7 @@ impl Executor {
 /// Applies an edit and logs the outcome; returns whether the flake should be reloaded.
 fn apply_edit(tx: &Sender<Action>, flake: &std::path::Path, edit: FlakeEdit) -> bool {
     let report = |result: Result<Changes, EditError>, success: String, failure: &str| match result
-        .and_then(|changes| edit::apply(&changes))
+        .and_then(|changes| edit::apply(&changes).map(|_| ()))
     {
         Ok(()) => {
             crate::log::output("Success", success);
@@ -383,7 +383,7 @@ fn add_package(tx: &Sender<Action>, flake: &std::path::Path, target: &ShellTarge
                 Ok(())
             })
         }
-        result => result.and_then(|changes| edit::apply(&changes)),
+        result => result.and_then(|changes| edit::apply(&changes).map(|_| ())),
     };
     match result {
         Ok(()) => crate::log::output(
