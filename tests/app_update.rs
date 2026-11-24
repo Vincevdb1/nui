@@ -177,3 +177,12 @@ fn a_flake_change_reloads_the_selected_file() {
         _ => panic!("expected a single LoadFlake effect"),
     }
 }
+
+#[test]
+fn ticks_redraw_while_the_flake_throbber_spins() {
+    let mut app = shell_app();
+    app.popup = Popup::None;
+    assert!(!nui::app::update::tick(&mut app));
+    app.flake.loading = true;
+    assert!(nui::app::update::tick(&mut app));
+}

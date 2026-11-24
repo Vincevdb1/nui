@@ -101,23 +101,24 @@ pub fn close(app: &mut App) -> Popup {
     Popup::None
 }
 
-pub fn tick(app: &mut App) {
+/// Starts the debounced search; returns whether the popup changed.
+pub fn tick(app: &mut App) -> bool {
     let Popup::Search(s) = &mut app.popup else {
-        return;
+        return false;
     };
     if s.edited.elapsed() <= DEBOUNCE || s.query.value() == s.searched {
-        return;
+        return false;
     }
     if s.query.value().is_empty() {
         s.searched.clear();
         s.results.clear();
         s.list.select(None);
-        return;
+        return true;
     }
     let shell_mode = app.mode == Mode::Shell;
     // Shell searches target the system's channel, so wait until it is known.
     if shell_mode && app.system.is_none() {
-        return;
+        return false;
     }
 
     s.searched = s.query.value().to_string();
@@ -143,6 +144,7 @@ pub fn tick(app: &mut App) {
         generation: app.search_generation.bump(),
         request,
     });
+    true
 }
 
 pub fn finished(app: &mut App, generation: Generation, result: Result<Vec<SearchResult>, String>) {

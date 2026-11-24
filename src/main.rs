@@ -55,26 +55,36 @@ fn run(
     executor: &Executor,
     rx: &mpsc::Receiver<Action>,
 ) -> Result<()> {
+    let mut dirty = true;
     while app.exit.is_none() {
         for effect in app.effects.drain(..) {
             executor.run(effect);
         }
-        terminal.draw(|frame| ui::render(app, frame))?;
+        if dirty {
+            terminal.draw(|frame| ui::render(app, frame))?;
+            dirty = false;
+        }
 
+        // Poll fast only while the throbber spins; idle frames are not redrawn.
+        let timeout = if app.flake.loading { 16 } else { 50 };
         // Drain every queued keystroke before redrawing so a burst of typing lands in one frame.
-        if event::poll(Duration::from_millis(16))? {
+        if event::poll(Duration::from_millis(timeout))? {
             let mut budget = 64;
             while budget > 0 && event::poll(Duration::ZERO)? {
                 budget -= 1;
-                if let Event::Key(key) = event::read()? {
-                    app::update::update(app, Action::Key(key));
+                match event::read()? {
+                    Event::Key(key) => app::update::update(app, Action::Key(key)),
+                    Event::Resize(..) => {}
+                    _ => continue,
                 }
+                dirty = true;
             }
         }
         while let Ok(action) = rx.try_recv() {
             app::update::update(app, action);
+            dirty = true;
         }
-        app::update::update(app, Action::Tick);
+        dirty |= app::update::tick(app);
     }
     Ok(())
 }

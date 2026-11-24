@@ -518,3 +518,20 @@ fn custom_flake_results_have_no_version_history() {
     assert!(matches!(search(&app).stage, Stage::Results));
     assert!(app.effects.is_empty());
 }
+
+#[test]
+fn ticks_ask_for_a_redraw_only_when_the_search_changes() {
+    use nui::app::update::tick;
+    let mut app = open(shell_with_system(None));
+    assert!(!tick(&mut app), "nothing to do on an empty query");
+    type_text(&mut app, "rg");
+    assert!(!tick(&mut app), "still debouncing");
+    std::thread::sleep(DEBOUNCE);
+    assert!(tick(&mut app), "the search starts");
+    assert!(!tick(&mut app), "the same query isn't searched again");
+
+    press(&mut app, key(KeyCode::Backspace));
+    press(&mut app, key(KeyCode::Backspace));
+    std::thread::sleep(DEBOUNCE);
+    assert!(tick(&mut app), "clearing the query clears the results");
+}

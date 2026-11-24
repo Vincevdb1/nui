@@ -6,8 +6,7 @@ pub fn update(app: &mut App, action: Action) {
     match action {
         Action::Key(key) => on_key(app, key),
         Action::Tick => {
-            app.throbber.calc_next();
-            search::tick(app);
+            tick(app);
         }
         Action::Log(entry) => app.log.push(entry),
         Action::SystemProbed(system, tools) => {
@@ -50,6 +49,13 @@ pub fn update(app: &mut App, action: Action) {
         Action::TemplatesListed(list) => app.templates = list,
         Action::NxvProgress(progress) => app.nxv_progress = progress,
     }
+}
+
+/// Advances timers; returns whether the screen needs a redraw.
+pub fn tick(app: &mut App) -> bool {
+    app.throbber.calc_next();
+    let searched = search::tick(app);
+    searched || app.flake.loading
 }
 
 fn on_key(app: &mut App, key: KeyEvent) {
