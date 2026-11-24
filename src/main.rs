@@ -37,6 +37,7 @@ fn main() -> Result<()> {
 
     let mut terminal = tui::init()?;
     let result = run(&mut terminal, &mut app, &executor, &rx);
+    backend::process::shutdown();
     tui::restore()?;
     result?;
 

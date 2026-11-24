@@ -1,3 +1,4 @@
+use super::process;
 use std::process::Command;
 
 /// The nixpkgs the user's `<nixpkgs>` and NixOS system resolve to.
@@ -15,24 +16,22 @@ pub struct Tools {
 }
 
 fn trimmed_stdout(cmd: &mut Command) -> Option<String> {
-    let output = cmd.output().ok().filter(|o| o.status.success())?;
+    let output = process::output(cmd).ok().filter(|o| o.status.success())?;
     let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
     (!s.is_empty()).then_some(s)
 }
 
 impl SystemInfo {
     pub fn probe() -> Self {
-        let nixpkgs_version = Command::new("nix-instantiate")
-            .args([
-                "--eval",
-                "-E",
-                "(import <nixpkgs> {}).lib.version",
-                "--json",
-            ])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .and_then(|o| serde_json::from_slice::<String>(&o.stdout).ok());
+        let nixpkgs_version = process::output(Command::new("nix-instantiate").args([
+            "--eval",
+            "-E",
+            "(import <nixpkgs> {}).lib.version",
+            "--json",
+        ]))
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| serde_json::from_slice::<String>(&o.stdout).ok());
 
         let nixpkgs_path = trimmed_stdout(Command::new("nix").args([
             "eval",

@@ -64,7 +64,7 @@ fn cancel_registered_kills_an_in_flight_child() {
     );
     match result {
         Err(Error::Failed(..)) => {}
-        Err(Error::Spawn(_, e)) => assert_eq!(e.to_string(), "search cancelled"),
+        Err(Error::Spawn(_, e)) => assert_eq!(e.to_string(), "process killed"),
         other => panic!("cancelled child should fail, got {:?}", other.map(|_| ())),
     }
     assert!(reg.lock().unwrap().is_empty(), "registry was not drained");

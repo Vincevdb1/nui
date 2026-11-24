@@ -1,4 +1,4 @@
-use super::process::{ChildRegistry, stdout};
+use super::process::{self, ChildRegistry, stdout};
 use super::search::SearchPackage;
 use super::{Error, Result};
 use crate::flake::{Output, OutputKind, Package, files, parse};
@@ -9,16 +9,14 @@ use std::process::Command;
 
 pub fn flake_show(flake_nix: &Path) -> Result<Vec<Output>> {
     let dir = files::dir(flake_nix);
-    let output = Command::new("nix")
-        .args([
-            "flake",
-            "show",
-            &files::flake_ref(dir),
-            "--json",
-            "--impure",
-        ])
-        .output()
-        .map_err(|e| Error::Spawn("nix", e))?;
+    let output = process::output(Command::new("nix").args([
+        "flake",
+        "show",
+        &files::flake_ref(dir),
+        "--json",
+        "--impure",
+    ]))
+    .map_err(|e| Error::Spawn("nix", e))?;
     if !output.status.success() {
         return Err(Error::Message(format!(
             "Failed to run nix flake show: {}. This might be due to a connection issue or an invalid flake.",
@@ -104,12 +102,13 @@ pub fn output_packages(flake_ref: &str, output: &Output) -> Result<Vec<Package>>
         format!("nix eval {}", installable),
     );
 
-    let output = Command::new("nix")
-        .env("NIXPKGS_ALLOW_UNFREE", "1")
-        .args(["eval", &installable, "--json", "--impure", "--apply"])
-        .arg(PACKAGE_INFO_EXPR.replace("EXTRACT", extract))
-        .output()
-        .map_err(|e| Error::Spawn("nix", e))?;
+    let output = process::output(
+        Command::new("nix")
+            .env("NIXPKGS_ALLOW_UNFREE", "1")
+            .args(["eval", &installable, "--json", "--impure", "--apply"])
+            .arg(PACKAGE_INFO_EXPR.replace("EXTRACT", extract)),
+    )
+    .map_err(|e| Error::Spawn("nix", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -239,9 +238,7 @@ pub struct Metadata {
 
 /// Looks `attr` up in the user's channel with `nix-env -qa`.
 pub fn metadata(attr: &str) -> Option<Metadata> {
-    let output = Command::new("nix-env")
-        .args(["-qa", attr, "--json"])
-        .output()
+    let output = process::output(Command::new("nix-env").args(["-qa", attr, "--json"]))
         .ok()
         .filter(|o| o.status.success())?;
     parse_metadata(&output.stdout)

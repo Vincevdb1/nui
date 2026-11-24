@@ -1,4 +1,4 @@
-use super::process::{ChildRegistry, stdout};
+use super::process::{self, ChildRegistry, stdout};
 use super::search::SearchPackage;
 use super::{Error, Result};
 use serde::Deserialize;
@@ -119,11 +119,13 @@ pub fn parse_versions(json: &[u8]) -> Result<Vec<VersionInfo>> {
 /// Runs `nxv update`, reporting each progress line as a compact bar.
 pub fn update(mut progress: impl FnMut(String)) -> Result<ExitStatus> {
     // `script` gives nxv a pty so it prints its progress bar.
-    let mut child = Command::new("script")
-        .args(["-q", "-c", "nxv update", "/dev/null"])
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|e| Error::Spawn("nxv update", e))?;
+    let mut child = process::spawn(
+        Command::new("script")
+            .args(["-q", "-c", "nxv update", "/dev/null"])
+            .stdout(Stdio::piped()),
+        None,
+    )
+    .map_err(|e| Error::Spawn("nxv update", e))?;
 
     let mut reader = BufReader::new(child.stdout.take().expect("stdout is piped"));
     let mut line = Vec::new();
