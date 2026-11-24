@@ -1,15 +1,34 @@
 use crate::flake::locate::attrpath;
-use crate::flake::parse::{PACKAGE_LIST_ATTRS, binding_path, binding_value, package_list};
+use crate::flake::parse::{self, PACKAGE_LIST_ATTRS, binding_path, binding_value};
 use rnix::{SyntaxKind, SyntaxNode, SyntaxToken};
 
-/// Every `packages`/`buildInputs`/`nativeBuildInputs` list directly inside a shell set.
+/// Every list of the `packages`/`buildInputs`/`nativeBuildInputs` bindings of a shell set.
 pub fn package_lists(shell_set: &SyntaxNode) -> Vec<SyntaxNode> {
+    tagged_lists(shell_set)
+        .into_iter()
+        .map(|(list, _)| list)
+        .collect()
+}
+
+/// The list a new package goes to.
+pub fn appendable_list(shell_set: &SyntaxNode) -> Option<SyntaxNode> {
+    tagged_lists(shell_set)
+        .into_iter()
+        .find_map(|(list, appendable)| appendable.then_some(list))
+}
+
+fn tagged_lists(shell_set: &SyntaxNode) -> Vec<(SyntaxNode, bool)> {
+    package_bindings(shell_set)
+        .filter_map(|c| binding_value(&c))
+        .flat_map(|v| parse::package_lists(&v))
+        .collect()
+}
+
+pub fn package_bindings(shell_set: &SyntaxNode) -> impl Iterator<Item = SyntaxNode> {
     shell_set
         .children()
         .filter(|c| c.kind() == SyntaxKind::NODE_ATTRPATH_VALUE)
         .filter(|c| binding_path(c).is_some_and(|p| PACKAGE_LIST_ATTRS.contains(&p.as_str())))
-        .filter_map(|c| binding_value(&c).and_then(package_list))
-        .collect()
 }
 
 /// List items whose text equals `pkg`, in source order.

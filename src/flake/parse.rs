@@ -289,12 +289,37 @@ pub fn binding_path(binding: &SyntaxNode) -> Option<String> {
         .map(|p| p.to_string().trim().to_string())
 }
 
-/// The list in `packages = [ ... ]` or `packages = with pkgs; [ ... ]`.
-pub fn package_list(value: SyntaxNode) -> Option<SyntaxNode> {
-    match value.kind() {
-        SyntaxKind::NODE_LIST => Some(value),
-        SyntaxKind::NODE_WITH => value.children().find(|c| c.kind() == SyntaxKind::NODE_LIST),
-        _ => None,
+/// The list literals of a package value: `[ ... ]`, `with pkgs; [ ... ]` and each part of a
+/// `++` chain. A list under a function call such as `lib.optionals` is not appendable.
+pub fn package_lists(value: &SyntaxNode) -> Vec<(SyntaxNode, bool)> {
+    let mut lists = Vec::new();
+    collect_lists(value, true, &mut lists);
+    lists
+}
+
+fn collect_lists(node: &SyntaxNode, appendable: bool, lists: &mut Vec<(SyntaxNode, bool)>) {
+    match node.kind() {
+        SyntaxKind::NODE_LIST => lists.push((node.clone(), appendable)),
+        SyntaxKind::NODE_WITH | SyntaxKind::NODE_PAREN => {
+            if let Some(body) = node.children().last() {
+                collect_lists(&body, appendable, lists);
+            }
+        }
+        SyntaxKind::NODE_BIN_OP
+            if node
+                .children_with_tokens()
+                .any(|c| c.kind() == SyntaxKind::TOKEN_CONCAT) =>
+        {
+            for side in node.children() {
+                collect_lists(&side, appendable, lists);
+            }
+        }
+        SyntaxKind::NODE_APPLY => {
+            if let Some(arg) = node.children().last() {
+                collect_lists(&arg, false, lists);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -312,8 +337,9 @@ pub fn package_attributes(content: &str) -> Vec<String> {
         .descendants()
         .filter(|n| n.kind() == SyntaxKind::NODE_ATTRPATH_VALUE)
         .filter(|n| binding_path(n).is_some_and(|p| PACKAGE_LIST_ATTRS.contains(&p.as_str())))
-        .filter_map(|n| binding_value(&n).and_then(package_list))
-        .flat_map(item_texts)
+        .filter_map(|n| binding_value(&n))
+        .flat_map(|v| package_lists(&v))
+        .flat_map(|(list, _)| item_texts(list))
         .collect();
 
     if !attrs.is_empty() {

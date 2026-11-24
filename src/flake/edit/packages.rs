@@ -1,6 +1,6 @@
 use super::ast::{
-    append_to_set, last_line, last_token, list_items, outputs_pattern, package_lists,
-    whitespace_before,
+    append_to_set, appendable_list, last_line, last_token, list_items, outputs_pattern,
+    package_lists, whitespace_before,
 };
 use super::inputs::remove_input;
 use super::{Changes, EditError, Overlay, find_shell, shell_node};
@@ -22,8 +22,8 @@ pub fn add_package(
     let src = files.get(&location.file)?;
     let set =
         shell_node(&src, &location).ok_or_else(|| EditError::ShellNotFound(target.clone()))?;
-    let edited = match package_lists(&set).first() {
-        Some(list) => append_to_list(list, pkg, &src),
+    let edited = match appendable_list(&set) {
+        Some(list) => append_to_list(&list, pkg, &src),
         None => append_to_set(&set, &format!("packages = [ {} ];", pkg), &src),
     }
     .ok_or_else(|| EditError::ShellNotFound(target.clone()))?;

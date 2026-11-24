@@ -310,3 +310,51 @@ fn the_view_reads_shells_from_the_locator() {
             .contains("could not find devShell")
     );
 }
+
+#[test]
+fn concatenated_lists_are_all_shown() {
+    assert_eq!(
+        located_packages(&common::sources("concat"), "x86_64-linux"),
+        ["git", "jq", "strace"]
+    );
+}
+
+#[test]
+fn adds_to_the_first_list_of_a_concatenation() {
+    let (files, _) = edit_fixture("concat", |s, f| {
+        edit::add_package(s, f, &x86("default"), "ripgrep")
+    });
+    assert_eq!(
+        located_packages(&files, "x86_64-linux"),
+        ["git", "jq", "ripgrep", "strace"]
+    );
+    assert!(
+        files[Path::new("flake.nix")].contains("            jq\n            ripgrep\n          ]")
+    );
+}
+
+#[test]
+fn removes_from_a_list_inside_optionals() {
+    let (files, _) = edit_fixture("concat", |s, f| {
+        edit::remove_packages(s, f, &x86("default"), &["strace".to_string()])
+    });
+    assert_eq!(located_packages(&files, "x86_64-linux"), ["git", "jq"]);
+}
+
+#[test]
+fn appends_to_the_list_before_optionals() {
+    let src = r#"{
+  outputs = { self, pkgs }: {
+    devShells.x86_64-linux.default = pkgs.mkShell {
+      packages = [ pkgs.git ] ++ pkgs.lib.optionals true [ pkgs.strace ];
+    };
+  };
+}"#;
+    let edited = common::add(src, &x86("default"), "pkgs.jq").unwrap();
+    assert!(
+        edited.contains(
+            "packages = [ pkgs.git pkgs.jq ] ++ pkgs.lib.optionals true [ pkgs.strace ];"
+        ),
+        "{edited}"
+    );
+}
