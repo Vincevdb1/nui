@@ -331,3 +331,12 @@ fn z_undoes_the_last_edit_once() {
     press(&mut app, char('z'));
     assert!(app.effects.is_empty());
 }
+
+#[test]
+fn a_failed_check_does_not_replace_an_open_popup() {
+    let mut app = flake_app("devshells");
+    app.popup = Popup::Help;
+    failed(&mut app);
+    assert!(matches!(app.popup, Popup::Help));
+    assert!(app.flake.last_edit.is_some(), "z can still undo it");
+}

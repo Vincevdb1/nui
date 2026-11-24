@@ -12,6 +12,19 @@ pub struct CheckFailure {
     pub snapshot: Snapshot,
 }
 
+/// The check runs in the background, so a popup the user opened meanwhile stays open.
+pub fn failed(app: &mut App, snapshot: Snapshot, error: String) {
+    if matches!(app.popup, Popup::None) {
+        app.popup = Popup::CheckFailed(CheckFailure { error, snapshot });
+    } else {
+        crate::log::output(
+            "Error",
+            format!("The edit failed its check. Press z to undo it.\n{}", error),
+        );
+        app.flake.last_edit = Some(snapshot);
+    }
+}
+
 pub fn on_key(app: &mut App, failure: CheckFailure, key: KeyEvent) -> Popup {
     match key.code {
         KeyCode::Char('r') => {
