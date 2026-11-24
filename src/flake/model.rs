@@ -128,8 +128,8 @@ impl Package {
     }
 
     pub fn is_pinned(&self) -> bool {
-        self.attr
-            .as_deref()
-            .is_some_and(|a| a.starts_with("inputs."))
+        self.attr.as_deref().is_some_and(|a| {
+            a.starts_with("inputs.") || crate::flake::parse::pinned_ref(a).is_some()
+        })
     }
 }

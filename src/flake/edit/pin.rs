@@ -1,6 +1,6 @@
 use super::ast::{is_with_list, outputs_pattern, package_lists, replace_in_lists};
 use super::inputs::add_input;
-use super::packages::drop_unused_input;
+use super::packages::{drop_unused_input, inputs_bind};
 use super::{Changes, EditError, Overlay, find_shell, shell_node};
 use crate::flake::locate::Sources;
 use crate::flake::model::{Input, ShellTarget};
@@ -32,9 +32,14 @@ pub fn pin_package(
         .ok_or_else(|| EditError::Unlocked(input.name.clone()))?;
 
     let pinned_input = format!("{}-{}", input.name, attr).replace('.', "-");
+    // Only `pkgs` must be in scope at the list, not `system`.
+    let flake_src = sources
+        .read(flake)
+        .ok_or_else(|| EditError::Unreadable(flake.to_path_buf()))?;
+    let bind = inputs_bind(&flake_src).unwrap_or_else(|| "inputs".to_string());
     let pinned_ref = format!(
-        "inputs.{}.legacyPackages.${{system}}.{}",
-        pinned_input, attr
+        "{}.{}.legacyPackages.${{pkgs.stdenv.hostPlatform.system}}.{}",
+        bind, pinned_input, attr
     );
 
     // The list item is replaced first so a package that isn't listed adds no input.
@@ -103,15 +108,12 @@ pub fn unpin_package(
     target: &ShellTarget,
     pkg: &str,
 ) -> Result<Changes, EditError> {
-    if !pkg.starts_with("inputs.") {
-        return Err(EditError::NotPinned(pkg.to_string()));
-    }
-    let parts: Vec<&str> = pkg.split('.').collect();
-    if parts.len() < 5 {
-        return Err(EditError::InvalidPinnedRef(pkg.to_string()));
-    }
-    let pinned_input = parts[1];
-    let attr = parts[parts.len() - 1];
+    let Some((pinned_input, attr)) = parse::pinned_ref(pkg) else {
+        return Err(match pkg.starts_with("inputs.") {
+            true => EditError::InvalidPinnedRef(pkg.to_string()),
+            false => EditError::NotPinned(pkg.to_string()),
+        });
+    };
 
     let mut files = Overlay::new(sources);
     let location = find_shell(&files, flake, target)

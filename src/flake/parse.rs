@@ -260,16 +260,48 @@ pub fn attr_segments(attrpath: &SyntaxNode) -> Vec<String> {
 /// The input a package reference comes from and the attribute it names, e.g.
 /// `inputs.foo.legacyPackages.${system}.hello` gives `(Some("foo"), "hello")`.
 pub fn ref_source(attr: &str) -> (Option<&str>, &str) {
-    let rest = attr.strip_prefix("inputs.").unwrap_or(attr);
-    let Some((source, rest)) = rest.split_once('.') else {
-        return (None, attr);
-    };
-    let leaf = ["legacyPackages.", "packages."]
-        .iter()
-        .find_map(|p| rest.strip_prefix(p))
-        .and_then(|r| r.split_once('.').map(|(_, leaf)| leaf))
-        .unwrap_or(rest);
-    (Some(source), leaf)
+    let parts = ref_segments(attr);
+    let text = |i: usize| &attr[parts[i].clone()];
+    let rest = |i: usize| &attr[parts[i].start..];
+    let is_set = |i: usize| matches!(text(i), "legacyPackages" | "packages");
+    if parts.len() >= 4 && is_set(1) {
+        return (Some(text(0)), rest(3));
+    }
+    if parts.len() >= 5 && is_set(2) {
+        return (Some(text(1)), rest(4));
+    }
+    let skip = usize::from(parts.len() > 2 && text(0) == "inputs");
+    match parts.len() - skip {
+        0 | 1 => (None, attr),
+        _ => (Some(text(skip)), rest(skip + 1)),
+    }
+}
+
+/// The input and attribute of a pinned `<inputs>.<input>.legacyPackages.<system>.<attr>`.
+pub fn pinned_ref(attr: &str) -> Option<(&str, &str)> {
+    let parts = ref_segments(attr);
+    (parts.len() >= 5 && &attr[parts[2].clone()] == "legacyPackages")
+        .then(|| (&attr[parts[1].clone()], &attr[parts[4].start..]))
+}
+
+/// Byte ranges of the dot-separated parts of a reference; a `${...}` part may hold dots.
+fn ref_segments(attr: &str) -> Vec<std::ops::Range<usize>> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0;
+    for (i, c) in attr.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            '.' if depth == 0 => {
+                parts.push(start..i);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(start..attr.len());
+    parts
 }
 
 /// The value node of an `attrpath = value;` binding.
