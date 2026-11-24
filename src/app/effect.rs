@@ -7,9 +7,9 @@ use crate::flake::edit::{self, EditError};
 use crate::flake::{Input, Output, ShellTarget, files, parse};
 use crate::pkgref::PackageRef;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
 /// Tags async results so a reply to a superseded request can be dropped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -94,6 +94,31 @@ pub fn input_package(input: &str, attr: &str) -> String {
     format!("{}.legacyPackages.${{system}}.{}", input, attr)
 }
 
+/// Concurrent `nix-search` processes for the update check.
+const UPDATE_WORKERS: usize = 4;
+
+/// The distinct `(attr, channel)` lookups the update check needs, resolving each package's
+/// source input to its upstream channel.
+pub fn update_jobs(
+    packages: Vec<(String, Option<String>)>,
+    inputs: &[Input],
+) -> Vec<(String, String)> {
+    let mut jobs: Vec<(String, String)> = packages
+        .into_iter()
+        .map(|(attr, source)| {
+            let channel = inputs
+                .iter()
+                .find(|i| Some(&i.name) == source.as_ref())
+                .map(Input::upstream_channel)
+                .unwrap_or_else(|| "nixos-unstable".to_string());
+            (attr, channel)
+        })
+        .collect();
+    jobs.sort();
+    jobs.dedup();
+    jobs
+}
+
 /// Runs effects on background threads and reports back through the action channel.
 pub struct Executor {
     tx: Sender<Action>,
@@ -142,15 +167,16 @@ impl Executor {
                 let _ = tx.send(Action::PackagesLoaded(generation, result));
             }),
             Effect::CheckUpdates { packages, inputs } => {
-                for (attr, source) in packages {
-                    let channel = inputs
-                        .iter()
-                        .find(|i| Some(&i.name) == source.as_ref())
-                        .map(Input::upstream_channel)
-                        .unwrap_or_else(|| "nixos-unstable".to_string());
+                let jobs = Arc::new(Mutex::new(update_jobs(packages, &inputs)));
+                for _ in 0..UPDATE_WORKERS {
+                    let jobs = Arc::clone(&jobs);
                     self.spawn(move |tx| {
-                        if let Some(version) = search::latest_version(&attr, &channel) {
-                            let _ = tx.send(Action::LatestVersion { attr, version });
+                        loop {
+                            let job = jobs.lock().unwrap_or_else(|e| e.into_inner()).pop();
+                            let Some((attr, channel)) = job else { break };
+                            if let Some(version) = search::latest_version(&attr, &channel) {
+                                let _ = tx.send(Action::LatestVersion { attr, version });
+                            }
                         }
                     });
                 }
