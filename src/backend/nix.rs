@@ -188,33 +188,20 @@ pub fn parse_flake_search(json: &[u8]) -> Result<Vec<SearchPackage>> {
         .collect())
 }
 
-/// The version of `attr` at a specific nixpkgs revision.
-pub fn version_at(rev: &str, attr: &str, reg: Option<&ChildRegistry>) -> Option<String> {
-    let mut cmd = Command::new("nix");
-    cmd.args([
-        "eval",
-        "--json",
-        &format!("github:NixOS/nixpkgs/{}#{}.version", rev, attr),
-    ]);
-    let out = stdout("nix eval", cmd, reg).ok()?;
-    serde_json::from_slice(&out).ok()
-}
-
-/// Versions of the given attributes in the system `<nixpkgs>`, `"Unknown"` when missing.
-pub fn system_versions(attrs: &[String], reg: Option<&ChildRegistry>) -> HashMap<String, String> {
-    if attrs.is_empty() {
-        return HashMap::new();
-    }
-
-    let mut expr = "let pkgs = import <nixpkgs> {}; \
-                    lib = pkgs.lib; \
-                    getV = pathStr: let \
-                      path = lib.splitString \".\" pathStr; \
-                      pkg = lib.attrByPath path null pkgs; \
-                      res = if pkg != null then builtins.tryEval (pkg.version or \"Unknown\") else { success = false; }; \
-                    in if res.success then res.value else \"Unknown\"; \
-                    in { "
-        .to_string();
+/// A `nix eval` expression mapping each attribute to its version in `pkgs`, or
+/// `"Unknown"`; attributes that are not plain attribute paths are left out.
+pub fn versions_expr(pkgs: &str, attrs: &[String]) -> String {
+    let mut expr = format!(
+        "let pkgs = {}; \
+         lib = pkgs.lib; \
+         getV = pathStr: let \
+           path = lib.splitString \".\" pathStr; \
+           pkg = lib.attrByPath path null pkgs; \
+           res = if pkg != null then builtins.tryEval (pkg.version or \"Unknown\") else {{ success = false; }}; \
+         in if res.success then res.value else \"Unknown\"; \
+         in {{ ",
+        pkgs
+    );
     for attr in attrs.iter().filter(|a| {
         a.chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
@@ -222,13 +209,50 @@ pub fn system_versions(attrs: &[String], reg: Option<&ChildRegistry>) -> HashMap
         expr.push_str(&format!("\"{}\" = getV \"{}\"; ", attr, attr));
     }
     expr.push('}');
+    expr
+}
 
+fn eval_versions(
+    pkgs: &str,
+    attrs: &[String],
+    reg: Option<&ChildRegistry>,
+) -> HashMap<String, String> {
+    if attrs.is_empty() {
+        return HashMap::new();
+    }
     let mut cmd = Command::new("nix");
-    cmd.args(["eval", "--json", "--impure", "--expr", &expr]);
+    cmd.args([
+        "eval",
+        "--json",
+        "--impure",
+        "--expr",
+        &versions_expr(pkgs, attrs),
+    ]);
     stdout("nix eval", cmd, reg)
         .ok()
         .and_then(|out| serde_json::from_slice(&out).ok())
         .unwrap_or_default()
+}
+
+/// Versions of the given attributes at a nixpkgs revision, `"Unknown"` when missing.
+pub fn versions_at(
+    rev: &str,
+    attrs: &[String],
+    reg: Option<&ChildRegistry>,
+) -> HashMap<String, String> {
+    if !rev.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return HashMap::new();
+    }
+    let pkgs = format!(
+        "(builtins.getFlake \"github:NixOS/nixpkgs/{}\").legacyPackages.${{builtins.currentSystem}}",
+        rev
+    );
+    eval_versions(&pkgs, attrs, reg)
+}
+
+/// Versions of the given attributes in the system `<nixpkgs>`, `"Unknown"` when missing.
+pub fn system_versions(attrs: &[String], reg: Option<&ChildRegistry>) -> HashMap<String, String> {
+    eval_versions("import <nixpkgs> {}", attrs, reg)
 }
 
 pub struct Metadata {

@@ -145,3 +145,23 @@ fn output_packages_evaluates_a_nixos_configuration() {
         );
     }
 }
+
+#[test]
+fn versions_expr_looks_up_each_safe_attribute_in_the_given_set() {
+    let attrs = ["hello", "python3Packages.requests", "bad\"; attr"].map(String::from);
+    let expr = nix::versions_expr("import <nixpkgs> {}", &attrs);
+    assert!(expr.starts_with("let pkgs = import <nixpkgs> {};"));
+    assert!(expr.contains(r#""hello" = getV "hello";"#));
+    assert!(expr.contains(r#""python3Packages.requests" = getV "python3Packages.requests";"#));
+    assert!(
+        !expr.contains("bad"),
+        "attributes with other characters are left out"
+    );
+    assert!(expr.ends_with('}'));
+}
+
+#[test]
+fn versions_at_rejects_revisions_that_are_not_plain_hashes() {
+    let attrs = ["hello".to_string()];
+    assert!(nix::versions_at("abc\"; evil", &attrs, None).is_empty());
+}

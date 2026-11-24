@@ -387,22 +387,33 @@ fn add_system_versions(results: &mut [SearchResult], reg: &ChildRegistry) {
     }
 }
 
-/// Versions of the top results at each nixpkgs input's locked revision.
+/// Versions of the top results at each nixpkgs input's locked revision, one eval per input.
 pub fn locked_versions(
     results: &[SearchResult],
     inputs: &[Input],
     reg: &ChildRegistry,
-    mut found: impl FnMut(String, String, String),
+    found: impl Fn(String, String, String) + Sync,
 ) {
-    for result in results.iter().take(10).filter(|r| r.source_input.is_none()) {
+    let names: Vec<String> = results
+        .iter()
+        .take(10)
+        .filter(|r| r.source_input.is_none())
+        .map(|r| r.name.clone())
+        .collect();
+    std::thread::scope(|scope| {
         for input in inputs.iter().filter(|i| i.is_nixpkgs()) {
-            if let Some(rev) = &input.rev
-                && let Some(version) = nix::version_at(rev, &result.name, Some(reg))
-            {
-                found(result.name.clone(), input.channel(), version);
-            }
+            let Some(rev) = &input.rev else { continue };
+            let (names, found) = (&names, &found);
+            scope.spawn(move || {
+                let versions = nix::versions_at(rev, names, Some(reg));
+                for name in names {
+                    if let Some(version) = versions.get(name).filter(|v| *v != "Unknown") {
+                        found(name.clone(), input.channel(), version.clone());
+                    }
+                }
+            });
         }
-    }
+    });
 }
 
 /// The newest version of `pkg` on `channel`, if nix-search knows it.
