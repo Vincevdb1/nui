@@ -119,6 +119,21 @@ pub fn reload(app: &mut App) {
     }
 }
 
+/// Like `reload`, but reuses the known outputs when the inputs did not change.
+pub fn refresh(app: &mut App) {
+    let Some(file) = app.flake.selected_file().cloned() else {
+        reload(app);
+        return;
+    };
+    app.effects.push(Effect::RefreshFlake {
+        path: file,
+        inputs: app.flake.inputs.clone(),
+        outputs: app.flake.outputs.clone(),
+    });
+    app.flake.loading = true;
+    app.flake.packages.clear();
+}
+
 pub fn inputs_updated(app: &mut App, result: Result<Vec<RevChange>, String>) {
     app.flake.updating = false;
     match result {

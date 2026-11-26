@@ -61,21 +61,33 @@ pub fn inputs(flake_nix: &str, flake_lock: Option<&str>) -> Vec<Input> {
     inputs
 }
 
+fn with_source(ast_outputs: &[Output], kind: OutputKind, path: String) -> Output {
+    let found = ast_outputs
+        .iter()
+        .find(|o| o.kind == kind && o.path == path);
+    Output {
+        kind,
+        name: found.and_then(|o| o.name.clone()),
+        content: found.and_then(|o| o.content.clone()),
+        edit_error: None,
+        path,
+    }
+}
+
+/// The known outputs with their source text read again, for edits that cannot add or
+/// remove an output.
+pub fn refresh_outputs(known: &[Output], flake_nix: &str) -> Vec<Output> {
+    let ast_outputs = outputs(flake_nix);
+    known
+        .iter()
+        .map(|o| with_source(&ast_outputs, o.kind, o.path.clone()))
+        .collect()
+}
+
 /// Merges the outputs nix reports with the source text found for them in flake.nix.
 pub fn outputs_from_flake_show(json: &serde_json::Value, flake_nix: &str) -> Vec<Output> {
     let ast_outputs = outputs(flake_nix);
-    let with_source = |kind: OutputKind, path: String| {
-        let found = ast_outputs
-            .iter()
-            .find(|o| o.kind == kind && o.path == path);
-        Output {
-            kind,
-            name: found.and_then(|o| o.name.clone()),
-            content: found.and_then(|o| o.content.clone()),
-            edit_error: None,
-            path,
-        }
-    };
+    let with_source = |kind, path| with_source(&ast_outputs, kind, path);
 
     let is_v2 = json.get("version").and_then(|v| v.as_u64()) == Some(2);
     let children = |val: &serde_json::Value| -> Option<serde_json::Map<String, serde_json::Value>> {

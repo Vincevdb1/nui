@@ -20,6 +20,8 @@ pub enum Action {
     SystemProbed(SystemInfo, Tools),
     FlakeLoaded(Vec<Input>, Vec<Output>),
     FlakeChanged,
+    /// An edit or undo wrote the sources; the outputs are the same.
+    SourcesChanged,
     EditApplied(Snapshot),
     CheckFailed {
         snapshot: Snapshot,

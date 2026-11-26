@@ -26,6 +26,12 @@ impl Generation {
 pub enum Effect {
     ProbeSystem,
     LoadFlake(PathBuf),
+    /// Reads the sources again and runs `nix flake show` only when the inputs changed.
+    RefreshFlake {
+        path: PathBuf,
+        inputs: Vec<Input>,
+        outputs: Vec<Output>,
+    },
     FetchPackages {
         generation: Generation,
         flake_ref: String,
@@ -160,13 +166,22 @@ impl Executor {
                 let _ = tx.send(Action::SystemProbed(system, tools));
             }),
             Effect::LoadFlake(path) => self.spawn(move |tx| {
+                let _ = tx.send(load_flake(&path, read_inputs(&path)));
+            }),
+            Effect::RefreshFlake {
+                path,
+                inputs,
+                outputs,
+            } => self.spawn(move |tx| {
+                let after = read_inputs(&path);
+                if !can_refresh(&inputs, &after, &outputs) {
+                    let _ = tx.send(load_flake(&path, after));
+                    return;
+                }
                 let source = std::fs::read_to_string(&path).unwrap_or_default();
-                let inputs = parse::inputs(&source, files::read_lock(&path).as_deref());
-                let outputs = nix::flake_show(&path).unwrap_or_else(|e| {
-                    crate::log::output("Nix Error", format!("Failed to fetch outputs: {}", e));
-                    Vec::new()
-                });
-                let _ = tx.send(Action::FlakeLoaded(inputs, outputs));
+                let mut outputs = parse::refresh_outputs(&outputs, &source);
+                nix::attach_shell_sources(&Fs, &path, &mut outputs);
+                let _ = tx.send(Action::FlakeLoaded(after, outputs));
             }),
             Effect::FetchPackages {
                 generation,
@@ -208,7 +223,7 @@ impl Executor {
                         }
                     });
                 }
-                let _ = tx.send(Action::FlakeChanged);
+                let _ = tx.send(Action::SourcesChanged);
             }),
             Effect::Restore(snapshot) => self.spawn(move |tx| match snapshot.restore() {
                 Ok(()) => {
@@ -218,7 +233,7 @@ impl Executor {
                         .map(|p| p.display().to_string())
                         .collect();
                     crate::log::output("Success", format!("Reverted {}", paths.join(", ")));
-                    let _ = tx.send(Action::FlakeChanged);
+                    let _ = tx.send(Action::SourcesChanged);
                 }
                 Err(e) => crate::log::output("Error", format!("Cannot undo: {}", e)),
             }),
@@ -320,6 +335,29 @@ impl Executor {
         self.current_search.store(generation.0, Ordering::SeqCst);
         cancel_registered(&self.search_children);
     }
+}
+
+/// Whether new sources can reuse the known outputs: `nix flake show` is needed only when
+/// the inputs changed or no outputs are known.
+pub fn can_refresh(before: &[Input], after: &[Input], outputs: &[Output]) -> bool {
+    before == after && !outputs.is_empty()
+}
+
+fn read_inputs(path: &std::path::Path) -> Vec<Input> {
+    let source = std::fs::read_to_string(path).unwrap_or_default();
+    parse::inputs(&source, files::read_lock(path).as_deref())
+}
+
+fn load_flake(path: &std::path::Path, inputs: Vec<Input>) -> Action {
+    crate::log::action(
+        "Loading flake outputs",
+        format!("nix flake show {} --json --impure", path.display()),
+    );
+    let outputs = nix::flake_show(path).unwrap_or_else(|e| {
+        crate::log::output("Nix Error", format!("Failed to fetch outputs: {}", e));
+        Vec::new()
+    });
+    Action::FlakeLoaded(inputs, outputs)
 }
 
 /// Applies an edit and logs the outcome; returns what it replaced when it wrote.

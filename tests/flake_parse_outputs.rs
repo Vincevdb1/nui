@@ -151,3 +151,23 @@ fn empty_flake_show_gives_nothing() {
     let v2 = serde_json::json!({ "version": 2, "inventory": {} });
     assert!(parse::outputs_from_flake_show(&v2, "").is_empty());
 }
+
+#[test]
+fn refresh_outputs_keeps_the_outputs_and_reads_new_source() {
+    let src = flake_src("devshells");
+    let known = parse::outputs(&src);
+    let edited = src.replace("python312", "python313");
+    let refreshed = parse::refresh_outputs(&known, &edited);
+    assert_eq!(summary(&refreshed), summary(&known));
+    let content = refreshed[0].content.as_deref().unwrap();
+    assert!(content.contains("python313"), "{content}");
+}
+
+#[test]
+fn refresh_outputs_keeps_an_output_that_is_gone_from_the_source() {
+    let known = parse::outputs(&flake_src("devshells"));
+    let refreshed = parse::refresh_outputs(&known, "{ outputs = _: { }; }");
+    assert_eq!(refreshed.len(), known.len());
+    assert_eq!(refreshed[0].path, known[0].path);
+    assert_eq!(refreshed[0].content, None);
+}

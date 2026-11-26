@@ -19,6 +19,7 @@ pub fn update(app: &mut App, action: Action) {
         }
         Action::FlakeLoaded(inputs, outputs) => flake::loaded(app, inputs, outputs),
         Action::FlakeChanged => flake::reload(app),
+        Action::SourcesChanged => flake::refresh(app),
         Action::EditApplied(snapshot) => app.flake.last_edit = Some(snapshot),
         Action::CheckFailed { snapshot, error } => flake::check::failed(app, snapshot, error),
         Action::InputsUpdated(result) => flake::inputs_updated(app, result),

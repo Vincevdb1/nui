@@ -186,3 +186,24 @@ fn ticks_redraw_while_the_flake_throbber_spins() {
     app.flake.loading = true;
     assert!(nui::app::update::tick(&mut app));
 }
+
+#[test]
+fn a_source_change_refreshes_with_the_known_outputs() {
+    let mut app = flake_app("devshells");
+    update(&mut app, Action::SourcesChanged);
+    assert!(app.flake.loading);
+    match app.effects.as_slice() {
+        [
+            Effect::RefreshFlake {
+                path,
+                inputs,
+                outputs,
+            },
+        ] => {
+            assert_eq!(path, &common::flake_path("devshells"));
+            assert_eq!(inputs, &app.flake.inputs);
+            assert_eq!(outputs, &app.flake.outputs);
+        }
+        _ => panic!("expected a single RefreshFlake effect"),
+    }
+}
