@@ -310,6 +310,7 @@ fn locked_and_latest_versions_update_matching_columns() {
         &mut app,
         Action::LatestVersion {
             attr: "hello".into(),
+            channel: "nixos-unstable".into(),
             version: "2.13".into(),
         },
     );

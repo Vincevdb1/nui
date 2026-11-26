@@ -37,10 +37,8 @@ pub enum Effect {
         flake_ref: String,
         output: Output,
     },
-    CheckUpdates {
-        packages: Vec<(String, Option<String>)>,
-        inputs: Vec<Input>,
-    },
+    /// `(attr, channel)` lookups that are not in the session cache.
+    CheckUpdates(Vec<(String, String)>),
     /// `check` names the devShells to evaluate after the write.
     Edit {
         flake: PathBuf,
@@ -191,8 +189,8 @@ impl Executor {
                 let result = nix::output_packages(&flake_ref, &output).map_err(|e| e.to_string());
                 let _ = tx.send(Action::PackagesLoaded(generation, result));
             }),
-            Effect::CheckUpdates { packages, inputs } => {
-                let jobs = Arc::new(Mutex::new(update_jobs(packages, &inputs)));
+            Effect::CheckUpdates(jobs) => {
+                let jobs = Arc::new(Mutex::new(jobs));
                 for _ in 0..UPDATE_WORKERS {
                     let jobs = Arc::clone(&jobs);
                     self.spawn(move |tx| {
@@ -200,7 +198,11 @@ impl Executor {
                             let job = jobs.lock().unwrap_or_else(|e| e.into_inner()).pop();
                             let Some((attr, channel)) = job else { break };
                             if let Some(version) = search::latest_version(&attr, &channel) {
-                                let _ = tx.send(Action::LatestVersion { attr, version });
+                                let _ = tx.send(Action::LatestVersion {
+                                    attr,
+                                    channel,
+                                    version,
+                                });
                             }
                         }
                     });

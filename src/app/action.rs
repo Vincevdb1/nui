@@ -31,6 +31,7 @@ pub enum Action {
     PackagesLoaded(Generation, Result<Vec<Package>, String>),
     LatestVersion {
         attr: String,
+        channel: String,
         version: String,
     },
 

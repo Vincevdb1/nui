@@ -2,7 +2,7 @@ pub mod check;
 pub mod keys;
 pub mod view;
 
-use crate::app::effect::FlakeEdit;
+use crate::app::effect::{FlakeEdit, update_jobs};
 use crate::app::{App, Effect, Generation};
 use crate::flake::edit::Snapshot;
 use crate::flake::lock::{self, RevChange};
@@ -236,13 +236,22 @@ pub fn packages_loaded(
         .collect();
     flake.packages.sort_by(|a, b| a.name.cmp(&b.name));
 
+    let packages = flake
+        .packages
+        .iter()
+        .map(|p| (p.name.clone(), p.source.clone()))
+        .collect();
     flake.updates.clear();
-    app.effects.push(Effect::CheckUpdates {
-        packages: flake
-            .packages
-            .iter()
-            .map(|p| (p.name.clone(), p.source.clone()))
-            .collect(),
-        inputs: flake.inputs.clone(),
-    });
+    let mut missing = Vec::new();
+    for job in update_jobs(packages, &flake.inputs) {
+        match app.latest_versions.get(&job) {
+            Some(version) => {
+                flake.updates.insert(job.0, version.clone());
+            }
+            None => missing.push(job),
+        }
+    }
+    if !missing.is_empty() {
+        app.effects.push(Effect::CheckUpdates(missing));
+    }
 }

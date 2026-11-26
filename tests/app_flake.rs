@@ -107,12 +107,58 @@ fn loaded_packages_trigger_an_update_check() {
         Action::PackagesLoaded(generation, Ok(vec![package("git", "2.50")])),
     );
     match app.effects.as_slice() {
-        [Effect::CheckUpdates { packages, inputs }] => {
-            assert_eq!(packages, &[("git".to_string(), Some("pkgs".to_string()))]);
-            assert_eq!(inputs.len(), 2);
+        [Effect::CheckUpdates(jobs)] => {
+            assert_eq!(jobs, &[("git".to_string(), "nixos-unstable".to_string())]);
         }
         _ => panic!("expected CheckUpdates"),
     }
+}
+
+fn cache(app: &mut App, attr: &str, version: &str) {
+    app.latest_versions.insert(
+        (attr.to_string(), "nixos-unstable".to_string()),
+        version.to_string(),
+    );
+}
+
+#[test]
+fn cached_versions_are_shown_without_a_lookup() {
+    let mut app = flake_app("pinned");
+    cache(&mut app, "git", "2.51");
+    let generation = fetch(&mut app);
+    update(
+        &mut app,
+        Action::PackagesLoaded(
+            generation,
+            Ok(vec![package("git", "2.50"), package("curl", "8.0")]),
+        ),
+    );
+    assert_eq!(
+        app.flake.updates.get("git").map(String::as_str),
+        Some("2.51")
+    );
+    match app.effects.as_slice() {
+        [Effect::CheckUpdates(jobs)] => {
+            assert_eq!(jobs, &[("curl".to_string(), "nixos-unstable".to_string())]);
+        }
+        _ => panic!("expected CheckUpdates for the uncached package"),
+    }
+}
+
+#[test]
+fn no_lookup_runs_when_every_version_is_cached() {
+    let mut app = flake_app("pinned");
+    cache(&mut app, "git", "2.51");
+    let generation = fetch(&mut app);
+    update(
+        &mut app,
+        Action::PackagesLoaded(generation, Ok(vec![package("git", "2.50")])),
+    );
+    assert!(app.effects.is_empty());
+    assert_eq!(
+        app.flake.updates.get("git").map(String::as_str),
+        Some("2.51")
+    );
 }
 
 #[test]

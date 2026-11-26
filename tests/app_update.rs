@@ -158,11 +158,18 @@ fn background_results_update_the_app() {
         &mut app,
         Action::LatestVersion {
             attr: "hello".into(),
+            channel: "nixos-unstable".into(),
             version: "2.13".into(),
         },
     );
     assert_eq!(
         app.flake.updates.get("hello").map(String::as_str),
+        Some("2.13")
+    );
+    assert_eq!(
+        app.latest_versions
+            .get(&("hello".to_string(), "nixos-unstable".to_string()))
+            .map(String::as_str),
         Some("2.13")
     );
 }

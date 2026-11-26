@@ -17,6 +17,7 @@ use crate::features::{
     templates::{SaveTemplate, TemplatePicker},
 };
 use crate::pkgref::PackageRef;
+use std::collections::HashMap;
 use throbber_widgets_tui::ThrobberState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +97,8 @@ pub struct App {
     pub nxv_progress: Option<String>,
     pub throbber: ThrobberState,
     pub search_generation: Generation,
+    /// Latest version of each `(attr, channel)` seen this session; outlives a mode switch.
+    pub latest_versions: HashMap<(String, String), String>,
     pub exit: Option<Exit>,
     pub effects: Vec<Effect>,
 }
@@ -119,6 +122,7 @@ impl App {
             nxv_progress: None,
             throbber: ThrobberState::default(),
             search_generation: Generation::default(),
+            latest_versions: HashMap::new(),
             exit: None,
             effects: vec![Effect::ProbeSystem],
         };

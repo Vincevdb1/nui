@@ -26,8 +26,14 @@ pub fn update(app: &mut App, action: Action) {
         Action::PackagesLoaded(generation, result) => {
             flake::packages_loaded(app, generation, result)
         }
-        Action::LatestVersion { attr, version } => {
+        Action::LatestVersion {
+            attr,
+            channel,
+            version,
+        } => {
             search::latest_version(app, &attr, &version);
+            app.latest_versions
+                .insert((attr.clone(), channel), version.clone());
             app.flake.updates.insert(attr, version);
         }
         Action::SearchFinished(generation, result) => search::finished(app, generation, result),
